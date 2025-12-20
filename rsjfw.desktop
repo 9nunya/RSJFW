@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=RSJFW Roblox Studio
+Exec=/mnt/MORESHIT/Projects/RSJFW/build/rsjfw launch %u
+Type=Application
+Terminal=false
+MimeType=x-scheme-handler/roblox-studio;x-scheme-handler/roblox-studio-auth;
+Categories=Development;
+Comment=Launch Roblox Studio via RSJFW
+Icon=rsjfw
