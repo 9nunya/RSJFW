@@ -13,6 +13,11 @@ provides=('rsjfw')
 source=('rsjfw::git+https://github.com/9nunya/RSJFW.git')
 sha256sums=('SKIP')
 
+pkgver() {
+  cd "$srcdir/rsjfw"
+  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
 build() {
   cmake -B build -S "$srcdir/rsjfw" \
     -DCMAKE_BUILD_TYPE=Release \
