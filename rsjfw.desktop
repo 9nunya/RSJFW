@@ -1,9 +1,16 @@
 [Desktop Entry]
 Name=RSJFW Roblox Studio
-Exec=/mnt/MORESHIT/Projects/RSJFW/build/rsjfw launch %u
+Exec=rsjfw launch %u
 Type=Application
 Terminal=false
-MimeType=x-scheme-handler/roblox-studio;x-scheme-handler/roblox-studio-auth;
-Categories=Development;
+MimeType=application/x-roblox-place;application/x-roblox-model;x-scheme-handler/roblox-studio;x-scheme-handler/roblox-studio-auth;
+Categories=GNOME;GTK;Game;PackageManager;
 Comment=Launch Roblox Studio via RSJFW
 Icon=rsjfw
+Actions=manage;
+Keywords=gaming;launcher;flatpak;
+
+[Desktop Action manage]
+Name=Manage
+Exec=rsjfw config
+MimeType=x-scheme-handler/roblox-studio;x-scheme-handler/roblox-studio-auth;

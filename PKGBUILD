@@ -1,6 +1,6 @@
 # PKGBUILD for RSJFW
 pkgname=rsjfw-git
-pkgver=1.0.0
+pkgver=r3.24abf8e
 pkgrel=1
 pkgdesc="Roblox Studio Just Fucking Works - Hardened Linux compatibility layer in C++"
 arch=('x86_64')
@@ -27,4 +27,9 @@ build() {
 
 package() {
   DESTDIR="$pkgdir" cmake --install build
+  
+  # Explicitly install desktop file and icon just in case CMake misses it or path differs
+  install -Dm644 "$srcdir/rsjfw/rsjfw.desktop" "$pkgdir/usr/share/applications/rsjfw.desktop"
+  install -Dm644 "$srcdir/rsjfw/assets/logo.png" "$pkgdir/usr/share/pixmaps/rsjfw.png"
+  install -Dm644 "$srcdir/rsjfw/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

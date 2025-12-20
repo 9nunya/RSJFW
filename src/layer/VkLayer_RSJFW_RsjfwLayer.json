@@ -1,0 +1,15 @@
+{
+    "file_format_version" : "1.0.0",
+    "layer" : {
+        "name": "VK_LAYER_RSJFW_RsjfwLayer",
+        "type": "GLOBAL",
+        "library_path": "VkLayer_RSJFW_RsjfwLayer.so",
+        "api_version": "1.0.0",
+        "implementation_version": "1",
+        "description": "RSJFW Vulkan Layer",
+        "gpu_labels": [],
+        "disable_environment": {
+            "DISABLE_RSJFW_LAYER": "1"
+        }
+    }
+}

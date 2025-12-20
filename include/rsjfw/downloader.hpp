@@ -12,6 +12,7 @@ public:
     
     bool installLatest();
     bool installVersion(const std::string& versionGUID);
+    std::string getLatestVersionGUID();
     
 private:
     std::string rootDir_;

@@ -18,6 +18,11 @@ Downloader::Downloader(const std::string& rootDir)
     std::filesystem::create_directories(downloadsDir_);
 }
 
+std::string Downloader::getLatestVersionGUID() {
+    RobloxAPI api;
+    return api.getLatestVersionGUID();
+}
+
 bool Downloader::installLatest() {
     try {
         std::string latest = RobloxAPI::getLatestVersionGUID();

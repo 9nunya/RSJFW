@@ -15,10 +15,11 @@ public:
     bool killStudio();
     bool setupFFlags(const std::string& versionGUID);
     bool installWebView2(const std::string& versionGUID);
+    bool openWineConfiguration();
+    bool setupDxvk(const std::string& versionGUID);
     
 private: 
-    bool setupDxvk(const std::string& versionGUID);
-    bool installDxvk();
+    bool installDxvk(const std::string& version);
 
     std::string rootDir_;
     std::string versionsDir_;
