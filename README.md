@@ -8,7 +8,7 @@
 
 Because other launchers like to play games with "experimental" features and broken Go runtimes. 
 
-Vinegar K till my bones decay, RSJFW SUPREMACY!!!
+**Vinegar K till my bones decay, RSJFW SUPREMACY!!!**
 
 <br clear="left"/>
 
