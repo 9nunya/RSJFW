@@ -22,7 +22,7 @@ build() {
   cmake -B build -S "$srcdir/rsjfw" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/usr
-  cmake --build build
+  cmake --build build --parallel $(nproc)
 }
 
 package() {
