@@ -17,7 +17,7 @@ jobs:
     - name: Install System Dependencies
       run: |
         pacman -Syu --noconfirm
-        pacman -S --noconfirm base-devel git cmake ninja libzip curl vulkan-icd-loader vulkan-headers glfw libglvnd libx11
+        pacman -S --noconfirm base-devel git cmake ninja libzip curl vulkan-icd-loader vulkan-headers glfw libglvnd libx11 libxrandr libxinerama libxcursor libxi
 
     - uses: actions/checkout@v4
       with:
@@ -33,7 +33,7 @@ jobs:
           -DCMAKE_INSTALL_PREFIX=/usr
 
     - name: Build
-      run: cmake --build build
+      run: cmake --build build --parallel $(nproc) -j$(nproc)
 
     - name: Install to Staging
       run: |
