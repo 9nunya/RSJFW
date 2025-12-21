@@ -161,13 +161,26 @@ void GUI::run(const std::function<void()>& renderCallback) {
         
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(viewport->WorkPos);
-        ImGui::SetNextWindowSize({ 500, 300 });
+        if (mode_ == MODE_LAUNCHER) {
+             ImGui::SetNextWindowSize({ 500, 300 });
+        } else {
+             int w, h;
+             glfwGetWindowSize(window, &w, &h);
+             ImGui::SetNextWindowSize(ImVec2((float)w, (float)h));
+             ImGui::SetNextWindowPos(ImVec2(0, 0));
+        }
 
         float display_w = viewport->WorkSize.x;
         float display_h = viewport->WorkSize.y;
         
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-        ImGui::Begin("RSJFW_Container", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings);
+        
+        ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoSavedSettings;
+        if (mode_ == MODE_LAUNCHER) {
+            windowFlags |= ImGuiWindowFlags_NoResize;
+        }
+
+        ImGui::Begin("RSJFW_Container", nullptr, windowFlags);
         
         if (mode_ == MODE_LAUNCHER) {
             float contentHeight = (logoTexture_ ? 150 : 0) + 100;
