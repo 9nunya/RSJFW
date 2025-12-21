@@ -16,6 +16,8 @@ it JUST fucking works. **Vinegar K till my bones decay, RSJFW SUPREMACY!!!**
 
 **Arch Linux (AUR)**
 ```bash
+yay -S rsjfw
+# or
 yay -S rsjfw-git
 ```
 
