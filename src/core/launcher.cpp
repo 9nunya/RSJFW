@@ -9,7 +9,9 @@
 #include <cstring>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/wait.h>
 #include <signal.h>
+#include <random>
 
 namespace rsjfw {
 
@@ -30,6 +32,18 @@ bool Launcher::setupPrefix() {
     reg.add("HKCU\\Software\\Wine\\X11 Driver", "UseEGL", "Y");
     reg.add("HKCU\\Software\\Wine\\DllOverrides", "dxgi", "native");
     reg.add("HKCU\\Software\\Wine\\DllOverrides", "d3d11", "native");
+    
+    if (!reg.exists("HKCU\\Software\\Wine\\Credential Manager", "EncryptionKey")) {
+        LOG_INFO("Generating Wine Credential Manager EncryptionKey...");
+        std::vector<unsigned char> key(8);
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(0, 255);
+        for (int i = 0; i < 8; ++i) {
+            key[i] = static_cast<unsigned char>(dis(gen));
+        }
+        reg.addBinary("HKCU\\Software\\Wine\\Credential Manager", "EncryptionKey", key);
+    }
     
     return true;
 }
@@ -361,18 +375,29 @@ bool Launcher::runWine(const std::string& executablePath, const std::vector<std:
     FILE* stream = fdopen(pipefd[0], "r");
     char buffer[1024];
 
+    std::string logDir = std::string(getenv("HOME")) + "/.local/share/rsjfw/logs";
+    std::filesystem::create_directories(logDir);
+    std::string logPath = logDir + "/studio_" + std::to_string(pid) + ".log";
+    std::ofstream logFile(logPath);
+
     while (fgets(buffer, sizeof(buffer), stream) != nullptr) {
         std::string line(buffer);
         std::cout << line << std::flush;
+        if (logFile.is_open()) {
+            logFile << line << std::flush;
+        }
 
         if (line.find("Fatal exiting due to Trouble launching Studio") != std::string::npos) {
             std::cerr << "\n[RSJFW] Detected fatal Roblox error. Killing Studio (PID: " << pid << ")...\n";
+            if (logFile.is_open()) logFile << "\n[RSJFW] Detected fatal Roblox error. Killing Studio...\n";
             kill(pid, SIGTERM);
             sleep(1);
             kill(pid, SIGKILL);
             break;
         }
     }
+    
+    if (logFile.is_open()) logFile.close();
 
     fclose(stream);
     int status;

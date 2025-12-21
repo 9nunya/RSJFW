@@ -90,7 +90,7 @@ int main(int argc, char* argv[]) {
              }
 
              if (!launchArgs.empty()) {
-                 std::thread([&launcher, latestVersion, launchArgs]() {
+                 std::thread([launcher, latestVersion, launchArgs]() mutable {
                      launcher.setupFFlags(latestVersion); 
                      launcher.launchVersion(latestVersion, launchArgs);
                  }).detach();

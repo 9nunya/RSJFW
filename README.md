@@ -6,9 +6,9 @@
 
 **Roblox Studio Just Fucking Works.** 
 
-Because other launchers like to play games with "experimental" features and broken Go runtimes. 
+no configuration errors, no launching then crashing, no dependency issues, no shitty env var setting
 
-**Vinegar K till my bones decay, RSJFW SUPREMACY!!!**
+it JUST fucking works. **Vinegar K till my bones decay, RSJFW SUPREMACY!!!**
 
 <br clear="left"/>
 
@@ -16,32 +16,7 @@ Because other launchers like to play games with "experimental" features and brok
 
 **Arch Linux (AUR)**
 ```bash
-# Clone and build package
-makepkg -si
-```
-
-**Ubuntu / Debian**
-```bash
-# Build DEB package
-mkdir build && cd build
-cmake ..
-cpack -G DEB
-sudo dpkg -i rsjfw-*.deb
-```
-
-**Arch Linux (AUR)**
-```bash
-# Clone and build package
-makepkg -si
-```
-
-**Ubuntu / Debian**
-```bash
-# Build DEB package
-mkdir build && cd build
-cmake ..
-cpack -G DEB
-sudo dpkg -i rsjfw-*.deb
+yay -S rsjfw-git
 ```
 
 **Manual Install (Dev)**
@@ -52,12 +27,21 @@ make -j$(nproc)
 ./rsjfw install
 ```
 
-### Usage
-- `rsjfw install` - Get Studio.
-- `rsjfw launch` - Open Studio.
-- `rsjfw kill` - Nuke it.
+lowk im not packageing for other distros i only use arch, contributors are free to do this
+this IS a prototype, im not an entire dev team, expect bugs and possibly errors, but hey
+i will ACTUALLY fix them, so PLEASE make issues and scream at me
+i WILL read them and WILL solve them unlike vinegar who has like a billion support tickets
+and the fucking staff just act nonchalant and say do this temporary fix for now
+WHERE THE FUCK ARE THE FIXES? THIS IS A OPEN SOURCE SOFTWARE!!! FIX YOUR SHIT!!! 
+STOP FUCKING SITTING ON YOUR ASS ALL DAY LITERALLY SNIFFING YOUR SHIT CRUMBS AND GET YOUR FUCKING PACKAGE WORKING!!
+HOW DO YOU HAVE 5+ CONTRIBS AND THE PACKAGE GETS 1 UPDATE PER MAYBE? FUCKING STUPID!!! IT SERIOUSLY TOOK YOU GUYS
+2 YEARS TO GET TO A STABLE STATE? REALLY? I DID THIS SHIT IN 3 DAYS AND IT WORKS FINE!  
 
-If you click "Login with Browser", it'll just work once you setup the protocol handler.
+### Usage
+- `rsjfw launch` Launch or install studio
+- `rsjfw config` Open the config editor
+- `rsjfw kill` Kill any running Roblox Studio instances
+- `rsjfw help` Show help
 
 ---
-*Built with spite and C++.*
+*built with the SUPERIOR language, C++*
