@@ -11,15 +11,20 @@ jobs:
     permissions:
       contents: write # Needed for creating releases
 
+    container: archlinux:latest
+
     steps:
+    - name: Install System Dependencies
+      run: |
+        pacman -Syu --noconfirm
+        pacman -S --noconfirm base-devel git cmake ninja libzip curl vulkan-icd-loader vulkan-headers glfw libglvnd libx11
+
     - uses: actions/checkout@v4
       with:
         submodules: recursive
-
-    - name: Install Dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libcurl4-openssl-dev libzip-dev libvulkan-dev libglfw3-dev libgl1-mesa-dev libx11-dev pkg-config cmake ninja-build
+        
+    - name: Fix Git Safety
+      run: git config --global --add safe.directory $GITHUB_WORKSPACE
 
     - name: Configure CMake
       run: |
