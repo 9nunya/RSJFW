@@ -354,18 +354,25 @@ bool Launcher::runWine(const std::string& executablePath, const std::vector<std:
 
     auto& wineCfg = Config::instance().getWine();
     std::string resolution = wineCfg.desktopResolution;
-    std::vector<std::string> finalArgs;
+    // Sanitize resolution
+    resolution.erase(std::remove(resolution.begin(), resolution.end(), ' '), resolution.end());
+    if (resolution.empty()) resolution = "1920x1080";
+
+    std::vector<std::string> launchArgs;
+    std::string target;
 
     if (wineCfg.multipleDesktops || wineCfg.desktopMode) {
-        finalArgs.push_back("explorer");
+        target = "explorer";
         std::string d = "/desktop=RSJFW_" + (wineCfg.multipleDesktops ? std::to_string(getpid()) : "Desktop") + "," + resolution;
-        finalArgs.push_back(d);
+        launchArgs.push_back(d);
+        launchArgs.push_back(executablePath);
+    } else {
+        target = executablePath;
     }
     
-    finalArgs.push_back(executablePath);
-    for (const auto& a : args) finalArgs.push_back(a);
+    for (const auto& a : args) launchArgs.push_back(a);
 
-    std::cout << "[RSJFW] Launching: " << executablePath << "\n";
+    std::cout << "[RSJFW] Launching: " << executablePath << (target == "explorer" ? " (Desktop Mode)" : "") << "\n";
 
     std::string logDir = std::string(getenv("HOME")) + "/.local/share/rsjfw/logs";
     std::filesystem::create_directories(logDir);
@@ -375,18 +382,6 @@ bool Launcher::runWine(const std::string& executablePath, const std::vector<std:
     
     std::string studioCwd = std::filesystem::path(executablePath).parent_path().string();
 
-    std::string target = (wineCfg.multipleDesktops || wineCfg.desktopMode) ? "explorer" : executablePath;
-    
-    std::vector<std::string> launchArgs;
-    if (wineCfg.multipleDesktops || wineCfg.desktopMode) {
-        if (!finalArgs.empty() && finalArgs[0] == "explorer") {
-            launchArgs.assign(finalArgs.begin() + 1, finalArgs.end());
-        } else {
-            launchArgs = finalArgs;
-        }
-    } else {
-        launchArgs = args;
-    }
 
     return pfx.wine(target, launchArgs, [logFile](const std::string& line) {
         std::cout << line;
