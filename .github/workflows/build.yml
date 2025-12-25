@@ -116,9 +116,14 @@ jobs:
 
     - name: Create Tarball
       run: |
-        PKGVER="1.0.${{ github.run_number }}"
-        TAG="v$PKGVER"
-        echo "VERSION=$TAG" >> $GITHUB_ENV
+        VERSION="${GITHUB_REF_NAME}"
+        # If VERSION doesn't start with v, or is empty, fallback to run number
+        if [[ ! $VERSION =~ ^v[0-9] ]]; then
+          VERSION="v1.0.${{ github.run_number }}"
+        fi
+        PKGVER="${VERSION#v}"
+        
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
         echo "PKGVER=$PKGVER" >> $GITHUB_ENV
         
         cd staging
@@ -141,7 +146,6 @@ jobs:
       if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ env.VERSION }}
         files: rsjfw-${{ env.PKGVER }}-arch-x86_64.tar.gz
         fail_on_unmatched_files: true
 
