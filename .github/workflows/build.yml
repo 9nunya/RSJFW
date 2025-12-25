@@ -160,7 +160,11 @@ jobs:
         
         git clone ssh://aur@aur.archlinux.org/rsjfw.git aur-repo
         cd aur-repo
-        git checkout -B master
+        
+        # Ensure we are on master and synced with remote
+        git checkout master || git checkout -b master
+        git fetch origin master
+        git reset --hard origin/master
         
         cp ../packaging/aur/PKGBUILD .
         cp ../packaging/aur/rsjfw.install .
