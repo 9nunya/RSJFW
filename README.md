@@ -13,6 +13,10 @@ it JUST fucking works. **Vinegar K till my bones decay, RSJFW SUPREMACY!!!**
 <br clear="left"/>
 
 > [!WARNING]
+> I dont need to abide by your shitty guidelines. You are getting in the way of progress.
+> https://discord.gg/FNf4mrA7s8
+
+> [!WARNING]
 > RSJFW IS LITERALLY BRAND NEW, EXPECT ISSUES! IT JUST FUCKING WORKS, BUT WHO KNOWS. BUGS WILL ALWAYS EXIST.
 
 ## Why RSJFW?
