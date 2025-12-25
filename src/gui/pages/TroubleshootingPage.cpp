@@ -28,7 +28,7 @@ void TroubleshootingPage::render() {
     }
     ImGui::SameLine();
     if (ImGui::Button("Delete Wine Prefix", ImVec2(180, 0))) {
-        try { std::filesystem::remove_all(rootPath + "/wineprefix"); } catch (...) {}
+        try { std::filesystem::remove_all(rootPath + "/prefix"); } catch (...) {}
     }
     
     if (ImGui::Button("Delete Downloaded Wine", ImVec2(180, 0))) {

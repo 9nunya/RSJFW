@@ -94,7 +94,7 @@ void HomePage::render() {
     
     ImGui::SameLine();
     if (ImGui::Button("OPEN PREFIX", ImVec2(buttonWidth, 40))) {
-        std::string cmd = "xdg-open " + std::string(getenv("HOME")) + "/.rsjfw/wineprefix &";
+        std::string cmd = "xdg-open " + std::string(getenv("HOME")) + "/.rsjfw/prefix &";
         system(cmd.c_str());
     }
     
