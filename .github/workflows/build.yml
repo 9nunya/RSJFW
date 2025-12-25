@@ -92,7 +92,7 @@ jobs:
     - name: Install System Dependencies
       run: |
         pacman -Syu --noconfirm
-        pacman -S --noconfirm base-devel git cmake ninja libzip curl vulkan-icd-loader vulkan-headers glfw libglvnd libx11 libxrandr libxinerama libxcursor libxi
+        pacman -S --noconfirm base-devel git cmake ninja libzip curl vulkan-icd-loader vulkan-headers glfw libglvnd libx11 libxrandr libxinerama libxcursor libxi openssh sudo
 
     - uses: actions/checkout@v4
       with:
@@ -145,6 +145,41 @@ jobs:
         name: arch-tarball
         path: "*.tar.gz"
 
+    - name: Publish to AUR
+      if: startsWith(github.ref, 'refs/tags/')
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/id_aur
+        chmod 600 ~/.ssh/id_aur
+        ssh-keyscan -t ed25519 aur.archlinux.org >> ~/.ssh/known_hosts
+        export GIT_SSH_COMMAND="ssh -i ~/.ssh/id_aur -o StrictHostKeyChecking=no"
+        
+        VERSION="${GITHUB_REF_NAME}"
+        PKGVER="${VERSION#v}"
+        SHA="${{ steps.sha.outputs.sha }}"
+        
+        git clone ssh://aur@aur.archlinux.org/rsjfw.git aur-repo
+        
+        cp packaging/aur/PKGBUILD aur-repo/
+        cp packaging/aur/rsjfw.install aur-repo/
+        
+        cd aur-repo
+        sed -i "s/pkgver=0.0.0/pkgver=${PKGVER}/" PKGBUILD
+        sed -i "0,/SKIP/s/SKIP/${SHA}/" PKGBUILD
+        
+        # Generate .SRCINFO as non-root
+        useradd -m builder
+        chown -R builder .
+        sudo -u builder makepkg --printsrcinfo > .SRCINFO
+        
+        git config --global user.name "${{ secrets.AUR_USERNAME }}"
+        git config --global user.email "${{ secrets.AUR_EMAIL }}"
+        git config --global --add safe.directory $(pwd)
+        
+        git add PKGBUILD rsjfw.install .SRCINFO
+        git commit -m "Update to ${VERSION}" || echo "No changes"
+        git push origin master
+
   release:
     needs: [build-appimage, build-arch]
     if: startsWith(github.ref, 'refs/tags/')
@@ -173,31 +208,3 @@ jobs:
         files: release_files/*
         generate_release_notes: true
         fail_on_unmatched_files: true
-
-    - name: Prepare AUR Package
-      run: |
-        mkdir -p aur_deploy
-        cp packaging/aur/PKGBUILD aur_deploy/
-        cp rsjfw.install aur_deploy/
-        
-        PKGVER="${{ needs.build-arch.outputs.pkgver }}"
-        SHA="${{ needs.build-arch.outputs.sha }}"
-        
-        sed -i "s/pkgver=0.0.0/pkgver=$PKGVER/" aur_deploy/PKGBUILD
-        sed -i "0,/SKIP/s/SKIP/$SHA/" aur_deploy/PKGBUILD
-        
-        cat aur_deploy/PKGBUILD
-        
-    - name: Publish to AUR
-      uses: KSXGitHub/github-actions-deploy-aur@v2.7.2
-      with:
-        pkgname: rsjfw
-        pkgbuild: ./aur_deploy/PKGBUILD
-        assets: ./aur_deploy/rsjfw.install
-        commit_username: ${{ secrets.AUR_USERNAME }}
-        commit_email: ${{ secrets.AUR_EMAIL }}
-        ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-        commit_message: "Update to ${{ github.ref_name }}"
-        ssh_keyscan_types: rsa,ecdsa,ed25519
-        allow_empty_commits: true
-        force_push: true
