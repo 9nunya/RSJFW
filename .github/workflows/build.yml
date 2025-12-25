@@ -138,7 +138,7 @@ jobs:
         echo "SHA=$SHA" >> $GITHUB_ENV
 
     - name: Create GitHub Release
-      if: startsWith(github.ref, 'refs/tags/') != true
+      if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
         tag_name: ${{ env.VERSION }}
