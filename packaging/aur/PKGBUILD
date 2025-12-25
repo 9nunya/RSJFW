@@ -6,14 +6,15 @@ pkgdesc="Roblox Studio Just Fucking Works - Hardened Linux compatibility layer (
 arch=('x86_64')
 url="https://github.com/9nunya/RSJFW"
 license=('MIT')
-depends=('curl' 'libzip' 'wine' 'vulkan-icd-loader' 'hicolor-icon-theme')
+depends=('curl' 'libzip' 'wine' 'vulkan-icd-loader' 'hicolor-icon-theme' 'glfw' 'libglvnd')
 provides=('rsjfw')
 conflicts=('rsjfw-git')
-source=("https://github.com/9nunya/RSJFW/releases/download/v${pkgver}/rsjfw-${pkgver}-x86_64.tar.gz")
-sha256sums=('SKIP') # PLACEHOLDER_SHA256
+install=rsjfw.install
+source=("https://github.com/9nunya/RSJFW/releases/download/v${pkgver}/rsjfw-${pkgver}-x86_64.tar.gz"
+        "rsjfw.install")
+sha256sums=('SKIP' 'SKIP') # PLACEHOLDER_SHA256
 
 package() {
-    # The binary release contains the full /usr structure
     install -d "$pkgdir/usr"
     cp -a "$srcdir"/usr/* "$pkgdir/usr/"
 }

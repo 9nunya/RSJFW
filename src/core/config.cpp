@@ -13,12 +13,11 @@ Config& Config::instance() {
 }
 
 void Config::load(const std::filesystem::path& path) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     configPath_ = path;
 
     if (!std::filesystem::exists(path)) {
         LOG_WARN("Config file not found at " + path.string() + ". Using defaults.");
-        // Create default file
         save(); 
         return;
     }
@@ -28,16 +27,33 @@ void Config::load(const std::filesystem::path& path) {
         json j;
         file >> j;
 
-        // General
         if (j.contains("general")) {
             auto& g = j["general"];
             general_.renderer = g.value("renderer", "D3D11");
             general_.dxvk = g.value("dxvk", true);
+            general_.dxvkSource = (DxvkSource)g.value("dxvk_source", 0);
             general_.dxvkVersion = g.value("dxvk_version", "2.5");
+            general_.dxvkCustomPath = g.value("dxvk_custom_path", "");
+            general_.dxvkRoot = g.value("dxvk_root", "");
+
+            
+            general_.wineSource = (WineSource)g.value("wine_source", 0);
             general_.wineRoot = g.value("wine_root", "");
+            general_.vinegarVersion = g.value("vinegar_version", "Latest");
+            general_.protonVersion = g.value("proton_version", "Latest");
+            
+            general_.robloxVersion = g.value("roblox_version", "");
+            general_.channel = g.value("channel", "production");
+            general_.selectedGpu = g.value("selected_gpu", -1);
+            
+            if (g.contains("env")) {
+                for (auto& [key, val] : g["env"].items()) {
+                    general_.customEnv[key] = val;
+                }
+            }
+            
         }
 
-        // Wine
         if (j.contains("wine")) {
             auto& w = j["wine"];
             wine_.desktopMode = w.value("desktop_mode", false);
@@ -45,7 +61,6 @@ void Config::load(const std::filesystem::path& path) {
             wine_.desktopResolution = w.value("desktop_resolution", "1920x1080");
         }
 
-        // FFlags
         if (j.contains("fflags")) {
             fflags_.clear();
             for (auto& [key, val] : j["fflags"].items()) {
@@ -61,40 +76,46 @@ void Config::load(const std::filesystem::path& path) {
 }
 
 void Config::save() {
-    // This function acts as "dump defaults" if called without load, 
-    // or "save changes" if dynamic updates happen.
-    // For now, mainly used to create the initial config.
-    
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     if (configPath_.empty()) return;
 
-    // Create directories
     if (configPath_.has_parent_path()) {
         std::filesystem::create_directories(configPath_.parent_path());
     }
-
-    // Don't overwrite existing user config with defaults if we just failed to parse it?
-    // But load() calls save() only if file doesn't exist. So safe.
 
     json j;
     j["general"] = {
         {"renderer", general_.renderer},
         {"dxvk", general_.dxvk},
+        {"dxvk_source", (int)general_.dxvkSource},
         {"dxvk_version", general_.dxvkVersion},
-        {"wine_root", general_.wineRoot}
-    };
-    j["wine"] = {
-        {"desktop_mode", wine_.desktopMode},
-        {"multiple_desktops", wine_.multipleDesktops},
-        {"desktop_resolution", wine_.desktopResolution}
+        {"dxvk_custom_path", general_.dxvkCustomPath},
+        {"dxvk_root", general_.dxvkRoot},
+        {"wine_source", (int)general_.wineSource},
+        {"wine_root", general_.wineRoot},
+        {"vinegar_version", general_.vinegarVersion},
+        {"proton_version", general_.protonVersion},
+        {"roblox_version", general_.robloxVersion},
+        {"channel", general_.channel},
+        {"selected_gpu", general_.selectedGpu}
     };
     
-    // Convert fflags map back to json object
-    json fflagsJson;
-    for (const auto& [key, val] : fflags_) {
-        fflagsJson[key] = val;
+    j["general"]["env"] = json::object();
+    for (const auto& [key, val] : general_.customEnv) {
+        j["general"]["env"][key] = val;
     }
-    j["fflags"] = fflagsJson;
+    
+    j["dxvk"]["enable"] = general_.dxvk;
+    j["dxvk"]["version"] = general_.dxvkVersion;
 
+    j["wine"]["source"] = (int)general_.wineSource;
+    j["wine"]["root"] = general_.wineRoot;
+    
+    j["fflags"] = json::object();
+    for (const auto& [key, val] : fflags_) {
+        j["fflags"][key] = val;
+    }
+    
     try {
         std::ofstream file(configPath_);
         file << j.dump(4);
@@ -105,7 +126,7 @@ void Config::save() {
 }
 
 void Config::setFFlag(const std::string& key, const nlohmann::json& value) {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(mutex_);
     fflags_[key] = value;
 }
 

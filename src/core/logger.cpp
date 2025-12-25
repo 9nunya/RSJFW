@@ -11,7 +11,6 @@ void Logger::init(const std::filesystem::path& logPath, bool verbose) {
     std::lock_guard<std::mutex> lock(mutex_);
     verbose_ = verbose;
 
-    // Create directory if needed
     if (logPath.has_parent_path()) {
         std::filesystem::create_directories(logPath.parent_path());
     }
@@ -37,12 +36,10 @@ void Logger::log(LogLevel level, const std::string& message) {
     std::string levelStr = getLevelString(level);
     std::string formattedMsg = "[" + timestamp + "] [" + levelStr + "] " + message;
 
-    // Write to file
     if (logFile_.is_open()) {
         logFile_ << formattedMsg << std::endl;
     }
 
-    // Write to stdout/stderr if verbose or if it's an error/warning
     if (verbose_ || level == LogLevel::WARNING || level == LogLevel::ERROR) {
         if (level == LogLevel::ERROR) {
             std::cerr << formattedMsg << std::endl;

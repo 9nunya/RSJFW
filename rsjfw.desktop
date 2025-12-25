@@ -3,14 +3,13 @@ Name=RSJFW Roblox Studio
 Exec=rsjfw launch %u
 Type=Application
 Terminal=false
-MimeType=application/x-roblox-place;application/x-roblox-model;x-scheme-handler/roblox-studio;x-scheme-handler/roblox-studio-auth;
-Categories=GNOME;GTK;Game;PackageManager;
+MimeType=x-scheme-handler/roblox-studio;x-scheme-handler/roblox-studio-auth;
+Categories=Game;
 Comment=Launch Roblox Studio via RSJFW
 Icon=rsjfw
-Actions=manage;
-Keywords=gaming;launcher;flatpak;
+Actions=config;
+Keywords=roblox;studio;gaming;wine;
 
-[Desktop Action manage]
-Name=Manage
+[Desktop Action config]
+Name=Configure
 Exec=rsjfw config
-MimeType=x-scheme-handler/roblox-studio;x-scheme-handler/roblox-studio-auth;

@@ -3,6 +3,9 @@
 #include <string>
 #include <functional>
 #include <vector>
+#include <mutex>
+#include <memory>
+#include "rsjfw/page.hpp"
 
 namespace rsjfw {
 
@@ -12,19 +15,19 @@ public:
     
     static GUI& instance();
     
-    // Initialize the window and ImGui context
     bool init(int width, int height, const std::string& title, bool resizable);
 
     void setMode(Mode mode) { mode_ = mode; }
     
-    // Run the main loop with a render callback
     void run(const std::function<void()>& renderCallback);
 
-    // Update progress bar state
     void setProgress(float progress, const std::string& status);
+    void setTaskProgress(const std::string& name, float progress, const std::string& status);
+    void removeTask(const std::string& name);
+    void setSubProgress(float progress, const std::string& status); 
+
     void setError(const std::string& errorMsg);
 
-    // Accessors for state
     float getProgress() const { return progress_; }
     std::string getStatus() const { return status_; }
     std::string getError() const { return error_; }
@@ -32,19 +35,35 @@ public:
 
     void close();
     void shutdown();
+    
+    // Page Navigation
+    PageStack& pages() { return pages_; }
+    void navigateTo(std::shared_ptr<Page> page) { pages_.push(page); }
+    void goBack() { pages_.pop(); }
+    
+    // Accessors for pages
+    unsigned int logoTexture() const { return logoTexture_; }
+    int logoWidth() const { return logoWidth_; }
+    int logoHeight() const { return logoHeight_; }
 
-    // Forbidden
     GUI(const GUI&) = delete;
     GUI& operator=(const GUI&) = delete;
 
+    struct TaskInfo {
+        float progress;
+        std::string status;
+    };
+    
 private:
     GUI() = default;
     ~GUI();
 
-
     Mode mode_ = MODE_CONFIG;
     float progress_ = 0.0f;
     std::string status_ = "Initializing...";
+    
+    std::vector<std::pair<std::string, TaskInfo>> tasks_;
+    
     std::string error_ = "";
     bool shouldClose_ = false;
     bool initialized_ = false;
@@ -52,10 +71,12 @@ private:
     int logoWidth_ = 0;
     int logoHeight_ = 0;
 
-    // We keep implementation details hidden in cpp to avoid leaking ImGui/SDL headers
-    // But for simplicity in this prototype, we handle them in cpp mostly.
-    void* window_ = nullptr; // SDL_Window*
-    void* glContext_ = nullptr; // SDL_GLContext
+    void* window_ = nullptr;
+    void* glContext_ = nullptr;
+    
+    PageStack pages_;
+    
+    mutable std::mutex mutex_;
 };
 
-} // namespace rsjfw
+}

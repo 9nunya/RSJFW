@@ -32,3 +32,11 @@
 *.app
 build/
 /vinegar_reference
+downloads/MicrosoftEdgeEnterpriseX64.msi
+external/imgui
+Makefile
+compile_commands.json
+cmake_install.cmake
+CPackConfig.cmake
+CPackSourceConfig.cmake
+launch_on_vm.sh

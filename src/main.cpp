@@ -10,21 +10,22 @@
 #include <thread>
 #include <filesystem>
 #include <algorithm>
-
 #include "rsjfw/socket.hpp"
+#include <random>
 
-// Displays the help message to stdout
 void showHelp() {
     std::cout << "RSJFW - Roblox Studio Just Fucking Works\n\n"
               << "Usage: rsjfw [command] [args...]\n\n"
               << "Commands:\n"
               << "  config     Open the configuration editor (Default)\n"
               << "  install    Download and install the latest Roblox Studio\n"
+              << "  reinstall  Force reinstall Roblox Studio (removes versions first)\n"
               << "  launch     Launch the installed Roblox Studio\n"
               << "  kill       Kill any running Roblox Studio instances\n"
               << "  help       Show this help message\n\n"
               << "Flags:\n"
-              << "  -v, --verbose  Enable verbose logging to stdout\n";
+              << "  -v, --verbose  Enable verbose logging to stdout\n"
+              << "  -d, --debug    Enable full Wine debug logging (disable WINEDEBUG suppression)\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -47,6 +48,16 @@ int main(int argc, char* argv[]) {
         args.erase(it); 
     }
 
+    bool debug = false;
+    auto itDebug = std::find_if(args.begin(), args.end(), [](const std::string& arg) {
+        return arg == "-d" || arg == "--debug";
+    });
+    
+    if (itDebug != args.end()) {
+        debug = true;
+        args.erase(itDebug); 
+    }
+
     const std::string home = std::getenv("HOME");
     const std::string logPath = home + "/.local/share/rsjfw/rsjfw.log";
     rsjfw::Logger::instance().init(logPath, verbose);
@@ -67,6 +78,7 @@ int main(int argc, char* argv[]) {
         for (const auto& arg : receivedArgs) {
              const std::string rsjfwRoot = home + "/.rsjfw";
              rsjfw::Launcher launcher(rsjfwRoot);
+             launcher.setDebug(debug);
              rsjfw::Downloader downloader(rsjfwRoot);
              std::string latestVersion = downloader.getLatestVersionGUID();
              
@@ -118,49 +130,108 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (command == "launch" || command == "install") {
+    bool isReinstall = (command == "reinstall");
+    bool isInstallOnly = (command == "install" || isReinstall);
+    
+    if (command == "launch" || command == "install" || command == "reinstall") {
         auto& gui = rsjfw::GUI::instance();
         bool useGui = gui.init(500, 300, "RSJFW", false);
         
         if (useGui) {
+            bool isProtocol = false;
+            std::vector<std::string> extraArgs;
+            if (args.size() > 1) {
+                 for (size_t i = 1; i < args.size(); ++i) {
+                    std::string arg = args[i];
+                    if (arg.find("roblox-studio-auth:") == 0) {
+                        extraArgs.push_back(arg);
+                        isProtocol = true;
+                    } 
+                    else if (arg.find("roblox-studio:") == 0) {
+                        extraArgs.push_back("-protocolString");
+                        extraArgs.push_back(arg);
+                        isProtocol = true;
+                    } else {
+                        extraArgs.push_back(arg);
+                    }
+                }
+            }
+
+            if (isProtocol) {
+                rsjfw::Downloader downloader(rsjfwRoot);
+                rsjfw::Launcher launcher(rsjfwRoot);
+                launcher.setDebug(debug);
+                std::string latestVersion = downloader.getLatestVersionGUID();
+                
+                launcher.setupFFlags(latestVersion);
+                
+                if (!launcher.launchVersion(latestVersion, extraArgs)) {
+                     LOG_ERROR("Protocol launch failed.");
+                     return 1;
+                }
+                return 0; 
+            }
+
             gui.setMode(rsjfw::GUI::MODE_LAUNCHER);
             
             std::thread worker([&]() {
                 rsjfw::Downloader downloader(rsjfwRoot);
                 rsjfw::Launcher launcher(rsjfwRoot);
+                launcher.setDebug(debug);
                 
                 try {
+                    if (isReinstall) {
+                        gui.setProgress(0.05f, "Removing old versions...");
+                        std::filesystem::path versionsDir = std::filesystem::path(rsjfwRoot) / "versions";
+                        if (std::filesystem::exists(versionsDir)) {
+                            std::filesystem::remove_all(versionsDir);
+                        }
+                        std::filesystem::path prefixMarker = std::filesystem::path(rsjfwRoot) / "prefix" / ".rsjfw_setup_complete";
+                        if (std::filesystem::exists(prefixMarker)) {
+                            std::filesystem::remove(prefixMarker);
+                        }
+                    }
+                    
                     gui.setProgress(0.1f, "Checking for updates...");
                     std::string latestVersion = downloader.getLatestVersionGUID();
                     
-                    gui.setProgress(0.3f, "Verifying " + latestVersion + "...");
-                    if (!downloader.installVersion(latestVersion)) {
+                    gui.setProgress(0.2f, "Downloading " + latestVersion + "...");
+                    
+                    auto progressCb = [&](const std::string& item, float itemProgress, size_t index, size_t total) {
+                         float totalProg = (float)index / (float)total;
+                         gui.setProgress(0.2f + (totalProg * 0.4f), "Installing " + std::to_string(index) + "/" + std::to_string(total) + " packages...");
+                         std::string subStatus = "Downloading " + item + "...";
+                         gui.setSubProgress(itemProgress, subStatus);
+                    };
+
+                    if (!downloader.installVersion(latestVersion, progressCb)) {
                         gui.setError("Failed to install Roblox Studio.");
                         return;
                     }
                     
-                    if (command == "install") {
+                    gui.setSubProgress(0.0f, "");
+                    
+                    gui.setProgress(0.65f, "Setting up Wine prefix...");
+                    auto launcherProgress = [&](float p, std::string msg) {
+                        gui.setSubProgress(p, msg);
+                    };
+                    launcher.setupPrefix(launcherProgress);
+
+                    gui.setProgress(0.75f, "Installing DXVK...");
+                    launcher.setupDxvk(latestVersion, launcherProgress);
+
+                    gui.setProgress(0.85f, "Injecting FFlags...");
+                    launcher.setupFFlags(latestVersion, launcherProgress);
+                    
+                    if (isInstallOnly) {
                         gui.setProgress(1.0f, "Installation Complete!");
-                        std::this_thread::sleep_for(std::chrono::seconds(1));
+                        std::this_thread::sleep_for(std::chrono::seconds(2));
                         gui.close();
                         return;
                     }
 
-                    gui.setProgress(0.5f, "Setting up Wine prefix...");
-                    launcher.setupPrefix();
-
-                    gui.setProgress(0.6f, "Checking DXVK...");
-                    launcher.setupDxvk(latestVersion);
+                    gui.setProgress(0.95f, "Launching Roblox Studio...");
                     
-                    gui.setProgress(0.7f, "Installing WebView2...");
-                    launcher.installWebView2(latestVersion);
-                    
-                    gui.setProgress(0.8f, "Injecting FFlags...");
-                    launcher.setupFFlags(latestVersion);
-
-                    gui.setProgress(0.9f, "Launching Roblox Studio...");
-                    
-                    std::vector<std::string> extraArgs;
                     if (args.size() > 1) {
                          for (size_t i = 1; i < args.size(); ++i) {
                             std::string arg = args[i];
@@ -175,7 +246,7 @@ int main(int argc, char* argv[]) {
 
                     gui.close(); 
                     
-                    if (!launcher.launchVersion(latestVersion, extraArgs)) {
+                    if (!launcher.launchVersion(latestVersion, extraArgs, launcherProgress)) {
                         LOG_ERROR("Launch failed.");
                     }
                     
@@ -185,9 +256,9 @@ int main(int argc, char* argv[]) {
             });
             
             gui.run(nullptr);
-            gui.shutdown(); // Destroy window immediately
+            gui.shutdown();
             
-            if (worker.joinable()) worker.join(); // Wait for Studio to exit
+            if (worker.joinable()) worker.join();
             return 0;
             
         } else {
@@ -205,6 +276,7 @@ int main(int argc, char* argv[]) {
     if (command == "kill") {
         LOG_INFO("Terminating Studio...");
         rsjfw::Launcher launcher(rsjfwRoot);
+        launcher.setDebug(debug);
         return launcher.killStudio() ? 0 : 1;
     } 
     

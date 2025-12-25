@@ -45,6 +45,10 @@ list(FILTER SOURCES EXCLUDE REGEX "src/layer/.*")
 
 # ImGui sources for GLFW/OpenGL3
 set(IMGUI_SOURCES
+    src/gui/gui.cpp
+    src/gui/pages/HomePage.cpp
+    src/gui/pages/SettingsPage.cpp
+    src/gui/pages/TroubleshootingPage.cpp
     external/imgui/imgui.cpp
     external/imgui/imgui_demo.cpp
     external/imgui/imgui_draw.cpp
@@ -92,7 +96,7 @@ set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libcurl4, libzip4, wine, wine64")
 set(CPACK_DEBIAN_PACKAGE_SECTION "devel")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "User <user@example.com>")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Nunya <nunya9k@gmail.com>")
 
 # Determine architecture for DEB
 if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")

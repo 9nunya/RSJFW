@@ -1,0 +1,167 @@
+name: Build Release
+
+on:
+  push:
+    branches: [ "master" ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-appimage:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install Dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential cmake ninja-build \
+          libcurl4-openssl-dev libzip-dev \
+          libvulkan-dev vulkan-validationlayers-dev \
+          libglfw3-dev libgl1-mesa-dev \
+          libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+          desktop-file-utils appstream fuse libfuse2
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=/usr
+
+    - name: Build
+      run: cmake --build build --parallel $(nproc)
+
+    - name: Install to AppDir
+      run: |
+        mkdir -p AppDir
+        DESTDIR=$(pwd)/AppDir cmake --install build
+
+    - name: Download linuxdeploy
+      run: |
+        wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+        chmod +x linuxdeploy-x86_64.AppImage
+
+    - name: Create AppImage
+      run: |
+        export VERSION="${GITHUB_REF_NAME:-1.0.${{ github.run_number }}}"
+        
+        # Ensure desktop file and icon are in place
+        mkdir -p AppDir/usr/share/applications
+        mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+        cp rsjfw.desktop AppDir/usr/share/applications/
+        cp assets/logo.png AppDir/usr/share/icons/hicolor/256x256/apps/rsjfw.png
+        
+        # Create AppImage
+        ./linuxdeploy-x86_64.AppImage \
+          --appdir AppDir \
+          --desktop-file=rsjfw.desktop \
+          --icon-file=assets/logo.png \
+          --output appimage
+        
+        mv RSJFW*.AppImage rsjfw-${VERSION}-x86_64.AppImage || mv *.AppImage rsjfw-${VERSION}-x86_64.AppImage
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rsjfw-appimage
+        path: rsjfw-*.AppImage
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: rsjfw-*.AppImage
+        fail_on_unmatched_files: true
+
+  build-arch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    container: archlinux:latest
+
+    steps:
+    - name: Install System Dependencies
+      run: |
+        pacman -Syu --noconfirm
+        pacman -S --noconfirm base-devel git cmake ninja libzip curl vulkan-icd-loader vulkan-headers glfw libglvnd libx11 libxrandr libxinerama libxcursor libxi
+
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+        
+    - name: Fix Git Safety
+      run: git config --global --add safe.directory $GITHUB_WORKSPACE
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -G Ninja \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_INSTALL_PREFIX=/usr
+
+    - name: Build
+      run: cmake --build build --parallel $(nproc)
+
+    - name: Install to Staging
+      run: |
+        mkdir -p staging
+        DESTDIR=$(pwd)/staging cmake --install build
+
+    - name: Create Tarball
+      run: |
+        PKGVER="1.0.${{ github.run_number }}"
+        TAG="v$PKGVER"
+        echo "VERSION=$TAG" >> $GITHUB_ENV
+        echo "PKGVER=$PKGVER" >> $GITHUB_ENV
+        
+        cd staging
+        tar -czvf ../rsjfw-${PKGVER}-arch-x86_64.tar.gz usr
+        cd ..
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rsjfw-arch-tarball
+        path: rsjfw-*-arch-*.tar.gz
+
+    - name: Calculate SHA256
+      id: sha
+      run: |
+        SHA=$(sha256sum rsjfw-${{ env.PKGVER }}-arch-x86_64.tar.gz | awk '{print $1}')
+        echo "SHA=$SHA" >> $GITHUB_ENV
+
+    - name: Create GitHub Release
+      if: startsWith(github.ref, 'refs/tags/') != true
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ env.VERSION }}
+        files: rsjfw-${{ env.PKGVER }}-arch-x86_64.tar.gz
+        fail_on_unmatched_files: true
+
+    - name: Prepare AUR Package
+      run: |
+        mkdir -p aur_deploy
+        cp packaging/aur/PKGBUILD aur_deploy/
+        
+        sed -i "s/pkgver=0.0.0/pkgver=${{ env.PKGVER }}/" aur_deploy/PKGBUILD
+        sed -i "s/sha256sums=('SKIP')/sha256sums=('${{ env.SHA }}')/" aur_deploy/PKGBUILD
+        
+        cat aur_deploy/PKGBUILD
+        
+    - name: Publish to AUR
+      uses: KSXGitHub/github-actions-deploy-aur@v2.7.2
+      with:
+        pkgname: rsjfw
+        pkgbuild: ./aur_deploy/PKGBUILD
+        commit_username: ${{ secrets.AUR_USERNAME }}
+        commit_email: ${{ secrets.AUR_EMAIL }}
+        ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        commit_message: "Update to ${{ env.VERSION }}"
+        ssh_keyscan_types: rsa,ecdsa,ed25519

@@ -15,6 +15,9 @@ public:
     
     bool exists(const std::string& key, const std::string& valueName);
     
+    std::string readString(const std::string& key, const std::string& valueName);
+    std::vector<unsigned char> readBinary(const std::string& key, const std::string& valueName);
+    
 private:
     std::string prefixDir_;
 };

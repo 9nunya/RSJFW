@@ -17,8 +17,12 @@ const std::string RobloxAPI::BASE_URL = "https://setup.rbxcdn.com/";
 
 std::string RobloxAPI::getLatestVersionGUID(const std::string& channel) {
     std::string url = "https://clientsettings.roblox.com/v2/client-version/WindowsStudio64";
-    if (channel != "LIVE") {
-        url += "?channel=" + channel;
+    
+    std::string lookupChannel = channel;
+    if (lookupChannel == "production") lookupChannel = "LIVE";
+
+    if (lookupChannel != "LIVE") {
+        url += "?channel=" + lookupChannel;
     }
     
     std::string response = HTTP::get(url);
@@ -39,7 +43,6 @@ std::vector<RobloxPackage> RobloxAPI::getPackageManifest(const std::string& vers
     std::stringstream ss(response);
     std::string line;
     
-    // Skip the first line (e.g., "v0")
     if (!std::getline(ss, line)) return packages;
     
     while (std::getline(ss, line)) {

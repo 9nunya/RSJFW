@@ -25,7 +25,6 @@ bool ZipUtil::extract(const std::string& archivePath, const std::string& destPat
         std::string entryName(name);
         std::replace(entryName.begin(), entryName.end(), '\\', '/');
         
-        // Ensure the path is relative to destPath
         while (!entryName.empty() && entryName.front() == '/') {
             entryName.erase(0, 1);
         }

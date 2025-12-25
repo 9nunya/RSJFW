@@ -8,12 +8,48 @@
 
 namespace rsjfw {
 
+enum class WineSource {
+    SYSTEM,
+    CUSTOM,
+    VINEGAR,
+    PROTON_GE
+};
+
+enum class DxvkSource {
+    OFFICIAL,
+    SAREK,
+    CUSTOM
+};
+
 struct GeneralConfig {
     std::string renderer = "D3D11";
+    
+    // DXVK
     bool dxvk = true;
+    DxvkSource dxvkSource = DxvkSource::OFFICIAL;
     std::string dxvkVersion = "2.5";
-    std::string wineRoot = "";
+    std::string dxvkCustomPath = ""; // For custom source
+    std::string dxvkRoot = ""; // For auto-downloaded DXVK
+    
+    // Wine
+    WineSource wineSource = WineSource::SYSTEM;
+    std::string wineRoot = ""; // For Custom/Vinegar/Proton
+    std::string vinegarVersion = "Latest";
+    std::string protonVersion = "Latest";
+    
+    std::string robloxVersion = ""; // Empty = Latest
+    std::string rootDir;
+    std::string versionsDir;
+    std::string channel = "production";
+    
+    // GPU Selection (index into detected GPUs, -1 = auto)
+    int selectedGpu = -1;
+    
+    // Custom Environment Variables
+    std::map<std::string, std::string> customEnv; // "LIVE" or "production" or specific
 };
+
+// ... WineConfig unchanged
 
 struct WineConfig {
     bool desktopMode = false;
@@ -27,7 +63,8 @@ public:
 
     void load(const std::filesystem::path& configPath);
     void save();
-
+    
+    // Getters
     GeneralConfig& getGeneral() { return general_; }
     WineConfig& getWine() { return wine_; }
     
@@ -48,7 +85,7 @@ private:
     WineConfig wine_;
     std::map<std::string, nlohmann::json> fflags_;
     
-    std::mutex mutex_;
+    std::recursive_mutex mutex_;
 };
 
 } // namespace rsjfw

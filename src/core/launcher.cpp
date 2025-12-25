@@ -1,14 +1,17 @@
+#include "rsjfw/wine.hpp"
+#include "rsjfw/dxvk.hpp"
 #include "rsjfw/launcher.hpp"
+#include "rsjfw/downloader.hpp"
 #include "rsjfw/registry.hpp"
 #include "rsjfw/config.hpp"
 #include "rsjfw/logger.hpp"
+#include "rsjfw/http.hpp"
 #include <filesystem>
 #include <cstdlib>
 #include <algorithm>
 #include <fstream>
 #include <cstring>
 #include <unistd.h>
-#include <sys/wait.h>
 #include <sys/wait.h>
 #include <signal.h>
 #include <random>
@@ -24,60 +27,65 @@ Launcher::Launcher(const std::string& rootDir)
 }
 
 // Configures the Wine prefix registry for Roblox Studio
-bool Launcher::setupPrefix() {
-    LOG_INFO("Setting up Wine prefix...");
+bool Launcher::setupPrefix(ProgressCb progressCb) {
+    if (progressCb) progressCb(0.0f, "Initializing Wine Prefix...");
+    auto& genCfg = Config::instance().getGeneral();
+    rsjfw::wine::Prefix pfx(genCfg.wineRoot, prefixDir_);
+    
+    std::filesystem::path marker = std::filesystem::path(prefixDir_) / ".rsjfw_setup_complete";
+    if (std::filesystem::exists(marker)) {
+        LOG_INFO("Prefix setup already complete. Skipping.");
+        if (progressCb) progressCb(1.0f, "Prefix Ready.");
+        return true;
+    }
+
+    LOG_INFO("Setting up Wine prefix registry...");
+    if (progressCb) progressCb(0.2f, "Applying Registry Keys...");
+    
+    pfx.registryAdd("HKCU\\Software\\Wine\\WineDbg", "ShowCrashDialog", "0", "REG_DWORD");
+    pfx.registryAdd("HKCU\\Software\\Wine\\X11 Driver", "UseEGL", "Y");
+    pfx.registryAdd("HKCU\\Software\\Wine\\DllOverrides", "dxgi", "native");
+    pfx.registryAdd("HKCU\\Software\\Wine\\DllOverrides", "d3d11", "native");
+    
+    if (progressCb) progressCb(0.5f, "Checking Credentials...");
     Registry reg(prefixDir_);
+    bool keyExists = reg.exists("HKCU\\Software\\Wine\\Credential Manager", "EncryptionKey");
     
-    reg.add("HKCU\\Software\\Wine\\WineDbg", "ShowCrashDialog", 0);
-    reg.add("HKCU\\Software\\Wine\\X11 Driver", "UseEGL", "Y");
-    reg.add("HKCU\\Software\\Wine\\DllOverrides", "dxgi", "native");
-    reg.add("HKCU\\Software\\Wine\\DllOverrides", "d3d11", "native");
-    
-    if (!reg.exists("HKCU\\Software\\Wine\\Credential Manager", "EncryptionKey")) {
+    if (!keyExists) {
         LOG_INFO("Generating Wine Credential Manager EncryptionKey...");
+        if (progressCb) progressCb(0.6f, "Generating Encryption Key...");
         std::vector<unsigned char> key(8);
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_int_distribution<> dis(0, 255);
+        
+        std::stringstream ss;
+        ss << std::hex << std::setfill('0');
         for (int i = 0; i < 8; ++i) {
-            key[i] = static_cast<unsigned char>(dis(gen));
+            unsigned char b = static_cast<unsigned char>(dis(gen));
+            ss << std::setw(2) << static_cast<int>(b);
         }
-        reg.addBinary("HKCU\\Software\\Wine\\Credential Manager", "EncryptionKey", key);
+        
+        pfx.registryAdd("HKCU\\Software\\Wine\\Credential Manager", "EncryptionKey", ss.str(), "REG_BINARY");
     }
     
+    std::ofstream(marker).close();
+    
+
+    LOG_INFO("Enforcing system browser for authentication...");
+    pfx.registryAdd("HKCR\\http\\shell\\open\\command", "", "\"C:\\windows\\system32\\winebrowser.exe\" \"%1\"", "REG_SZ");
+    pfx.registryAdd("HKCR\\https\\shell\\open\\command", "", "\"C:\\windows\\system32\\winebrowser.exe\" \"%1\"", "REG_SZ");
+
+    if (progressCb) progressCb(1.0f, "Registry Setup Complete.");
     return true;
 }
 
 // Terminates all running Wine processes within the prefix
 bool Launcher::killStudio() {
     LOG_INFO("Killing all Studio processes in prefix...");
-    setenv("WINEPREFIX", prefixDir_.c_str(), 1);
-    return std::system("wineserver -k") == 0;
-}
-
-// Downloads and extracts a specific DXVK version
-bool Launcher::installDxvk(const std::string& version) {
-    std::filesystem::path downloadsDir = std::filesystem::path(rootDir_) / "downloads";
-    std::filesystem::create_directories(downloadsDir);
-    std::string filename = "dxvk-" + version + ".tar.gz";
-    std::string cacheFile = (downloadsDir / filename).string();
-
-    if (!std::filesystem::exists(cacheFile)) {
-        LOG_INFO("Downloading DXVK " + version + "...");
-        std::string url = "https://github.com/doitsujin/dxvk/releases/download/v" + version + "/" + filename;
-        std::string cmd = "curl -L \"" + url + "\" -o \"" + cacheFile + "\"";
-        if (std::system(cmd.c_str()) != 0) {
-             LOG_ERROR("Failed to download DXVK " + version);
-             return false;
-        }
-    }
-
-    std::filesystem::path dxvkRoot = std::filesystem::path(rootDir_) / "dxvk";
-    std::filesystem::create_directories(dxvkRoot);
-
-    LOG_INFO("Extracting DXVK...");
-    std::string cmd = "tar -C \"" + dxvkRoot.string() + "\" -xzf \"" + cacheFile + "\"";
-    return std::system(cmd.c_str()) == 0;
+    auto& genCfg = Config::instance().getGeneral();
+    rsjfw::wine::Prefix pfx(genCfg.wineRoot, prefixDir_);
+    return pfx.kill();
 }
 
 // Opens the Wine configuration tool
@@ -86,323 +94,317 @@ bool Launcher::openWineConfiguration() {
     return runWine("winecfg");
 }
 
-// Installs DXVK DLLs into the specific Studio version directory
-bool Launcher::setupDxvk(const std::string& versionGUID) {
-    std::string version = Config::instance().getGeneral().dxvkVersion;
-    std::filesystem::path dxvkX64 = std::filesystem::path(rootDir_) / "dxvk" / ("dxvk-" + version) / "x64";
-    if (!std::filesystem::exists(dxvkX64)) {
-        if (!installDxvk(version)) return false;
-    }
+// Installs DXVK globally into the prefix
+bool Launcher::setupDxvk(const std::string& versionGUID, ProgressCb progressCb) {
+    bool useDxvk = Config::instance().getGeneral().dxvk;
+    if (!useDxvk) return true;
 
-    std::filesystem::path studioDir = std::filesystem::path(versionsDir_) / versionGUID;
-    std::filesystem::copy_file(dxvkX64 / "dxgi.dll", studioDir / "dxgi.dll", std::filesystem::copy_options::overwrite_existing);
-    std::filesystem::copy_file(dxvkX64 / "d3d11.dll", studioDir / "d3d11.dll", std::filesystem::copy_options::overwrite_existing);
-    
-    return true;
-}
+    auto& genCfg = Config::instance().getGeneral();
+    std::string dxvkRoot = "";
 
-// Finds the latest installed version and launches it
-bool Launcher::launchLatest(const std::vector<std::string>& extraArgs) {
-    std::string latestVersion;
-    std::filesystem::file_time_type latestTime;
-    
-    if (!std::filesystem::exists(versionsDir_)) {
-        std::cerr << "[RSJFW] No versions installed.\n";
-        return false;
-    }
-    
-    for (const auto& entry : std::filesystem::directory_iterator(versionsDir_)) {
-        if (entry.is_directory()) {
-            auto time = std::filesystem::last_write_time(entry);
-            if (latestVersion.empty() || time > latestTime) {
-                latestVersion = entry.path().filename().string();
-                latestTime = time;
+    if (genCfg.dxvkSource == DxvkSource::CUSTOM) {
+        dxvkRoot = genCfg.dxvkCustomPath;
+    } else {
+        if (!genCfg.dxvkRoot.empty() && std::filesystem::exists(genCfg.dxvkRoot)) {
+            dxvkRoot = genCfg.dxvkRoot;
+        } else {
+            std::filesystem::path defaultDxvk = std::filesystem::path(rootDir_) / "dxvk";
+            if (std::filesystem::exists(defaultDxvk)) {
+
+                 for (const auto& entry : std::filesystem::directory_iterator(defaultDxvk)) {
+                     if (entry.is_directory()) {
+                         dxvkRoot = entry.path().string();
+                         break;
+                     }
+                 }
             }
         }
     }
     
-    if (latestVersion.empty()) {
-        std::cerr << "[RSJFW] No versions found to launch.\n";
-        return false;
-    }
-    
-    setupFFlags(latestVersion);
-    setupDxvk(latestVersion);
-    installWebView2(latestVersion);
-    return launchVersion(latestVersion, extraArgs);
-}
-
-// Installs the WebView2 runtime into the Wine prefix
-bool Launcher::installWebView2(const std::string& versionGUID) {
-    std::filesystem::path prefixWebViewDir = std::filesystem::path(prefixDir_) / "drive_c" / "Program Files (x86)" / "Microsoft" / "EdgeWebView";
-    if (std::filesystem::exists(prefixWebViewDir)) {
-        std::cout << "[RSJFW] WebView2 already installed in prefix, skipping.\n";
-        return true;
-    }
-
-    std::filesystem::path studioDir = std::filesystem::path(versionsDir_) / versionGUID;
-    std::filesystem::path installerPath = studioDir / "WebView2RuntimeInstaller" / "MicrosoftEdgeWebview2Setup.exe";
-    
-    if (!std::filesystem::exists(installerPath)) {
-        std::cerr << "[RSJFW] WebView2 installer not found at " << installerPath << "\n";
-        return false;
-    }
-
-    std::cout << "[RSJFW] Installing WebView2 into prefix...\n";
-    setenv("WINEPREFIX", prefixDir_.c_str(), 1);
-    setenv("WINEDEBUG", "-all", 1);
-    
-    std::string cmd = "wine \"" + installerPath.string() + "\" /silent /install";
-    int res = std::system(cmd.c_str());
-    return res == 0;
-}
-
-// Configures ClientAppSettings.json based on configuration
-bool Launcher::setupFFlags(const std::string& versionGUID) {
-    std::filesystem::path studioDir = std::filesystem::path(versionsDir_) / versionGUID;
-    std::filesystem::path settingsDir = studioDir / "ClientSettings";
-    std::filesystem::create_directories(settingsDir);
-    
-    std::filesystem::path settingsFile = settingsDir / "ClientAppSettings.json";
-    
-    auto& cfg = Config::instance();
-    auto& fflags = cfg.getFFlags();
-    
-    std::string renderer = cfg.getGeneral().renderer; 
-    
-    fflags["FFlagDebugGraphicsPreferD3D11"] = (renderer == "D3D11");
-    fflags["FFlagDebugGraphicsDisableD3D11"] = (renderer != "D3D11");
-    
-    fflags["FFlagDebugGraphicsPreferD3D11FL10"] = (renderer == "D3D11FL10");
-    fflags["FFlagDebugGraphicsDisableD3D11FL10"] = (renderer != "D3D11FL10");
-    
-    fflags["FFlagDebugGraphicsPreferVulkan"] = (renderer == "Vulkan");
-    fflags["FFlagDebugGraphicsDisableVulkan"] = (renderer != "Vulkan");
-    
-    fflags["FFlagDebugGraphicsPreferOpenGL"] = (renderer == "OpenGL");
-    fflags["FFlagDebugGraphicsDisableOpenGL"] = (renderer != "OpenGL");
-    
-    fflags["D3D11FL10"] = (renderer == "D3D11FL10"); 
-    
-    nlohmann::json root;
-    for (const auto& [key, val] : fflags) {
-        root[key] = val;
-    }
-    std::string jsonStr = root.dump(4);
-
-    std::ofstream ofs(settingsFile);
-    if (ofs) ofs << jsonStr;
-
-    std::string username = getenv("USER") ? getenv("USER") : "nunya";
-    std::filesystem::path appDataDir = std::filesystem::path(prefixDir_) / "drive_c/users" / username / "AppData/Local/Roblox/ClientSettings";
-    
-    if (!std::filesystem::exists(std::filesystem::path(prefixDir_) / "drive_c/users" / username / "AppData")) {
-        appDataDir = std::filesystem::path(prefixDir_) / "drive_c/users" / username / "Local Settings/Application Data/Roblox/ClientSettings";
-    }
-
-    LOG_INFO("Injecting StudioAppSettings.json into prefix AppData...");
-    std::filesystem::create_directories(appDataDir);
-    std::ofstream ofsCache(appDataDir / "StudioAppSettings.json");
-    if (ofsCache) {
-        ofsCache << jsonStr;
-    }
-
-    return true;
-}
-
-// Launches a specific version of Roblox Studio
-bool Launcher::launchVersion(const std::string& versionGUID, const std::vector<std::string>& extraArgs) {
-    std::filesystem::path studioDir = std::filesystem::path(versionsDir_) / versionGUID;
-    
-    std::string username = getenv("USER") ? getenv("USER") : "nunya";
-    std::filesystem::path officialRobloxDir = std::filesystem::path(prefixDir_) / "drive_c/users" / username / "AppData/Local/Roblox";
-    std::filesystem::path officialVersionsDir = officialRobloxDir / "Versions";
-    std::filesystem::path officialVersionDir = officialVersionsDir / versionGUID;
-
-    std::cout << "[RSJFW] Ensuring official installation path...\n";
-    std::filesystem::create_directories(officialVersionsDir);
-    
-    if (!std::filesystem::exists(officialVersionDir)) {
-        try {
-            std::filesystem::create_directory_symlink(studioDir, officialVersionDir);
-        } catch (const std::exception& e) {
-            std::cerr << "[RSJFW] Failed to create symlink: " << e.what() << "\n";
+    if (dxvkRoot.empty() || !std::filesystem::exists(dxvkRoot)) {
+        LOG_INFO("DXVK root not found. Attempting to download default DXVK...");
+        
+        if (progressCb) progressCb(0.0f, "Downloading DXVK...");
+        
+        rsjfw::Downloader downloader(rootDir_);
+        DxvkSource source = genCfg.dxvkSource;
+        if (source == DxvkSource::CUSTOM) source = DxvkSource::SAREK;
+        
+        bool success = downloader.installDxvk(source, "Latest", 
+            [&](const std::string& status, float p, size_t, size_t){
+                if (progressCb) progressCb(p, status);
+            });
+            
+        if (success) {
+            dxvkRoot = Config::instance().getGeneral().dxvkRoot;
+        } else {
+            LOG_ERROR("Failed to download DXVK.");
+            return false;
         }
     }
 
-    std::string exePath = findStudioExecutable(officialVersionDir.string());
-    if (exePath.empty()) {
-        exePath = findStudioExecutable(studioDir.string());
-    }
-    
-    if (exePath.empty()) {
-        std::cerr << "[RSJFW] Could not find RobloxStudioBeta.exe\n";
+    rsjfw::wine::Prefix pfx(genCfg.wineRoot, prefixDir_);
+    bool dxvkInstallSuccess = rsjfw::dxvk::install(pfx, dxvkRoot);
+    if (!dxvkInstallSuccess) {
+        LOG_ERROR("Failed to install DXVK.");
         return false;
     }
     
-    std::cout << "[RSJFW] Launching Studio from " << exePath << "...\n";
-    return runWine(exePath, extraArgs);
+    LOG_INFO("DXVK setup complete.");
+    return true;
 }
 
-// Helper to locate the Studio executable in a directory
-std::string Launcher::findStudioExecutable(const std::string& versionDir) {
-    std::filesystem::path p(versionDir);
-    p /= "RobloxStudioBeta.exe";
-    if (std::filesystem::exists(p)) {
-        return p.string();
+
+
+// Finds the latest installed version and launches it
+bool Launcher::launchLatest(const std::vector<std::string>& extraArgs, ProgressCb progressCb) {
+    if (!std::filesystem::exists(versionsDir_)) {
+        LOG_ERROR("Versions directory not found.");
+        return false;
     }
+
+    std::vector<std::string> versions;
+    for (const auto& entry : std::filesystem::directory_iterator(versionsDir_)) {
+        if (entry.is_directory()) {
+            std::string fname = entry.path().filename().string();
+            if (fname.find("version-") == 0) {
+                 versions.push_back(fname);
+            }
+        }
+    }
+
+    if (versions.empty()) {
+        LOG_ERROR("No Roblox Studio versions found.");
+        return false;
+    }
+
+    std::sort(versions.begin(), versions.end());
+    std::string latestVersion = versions.back();
+    
+    LOG_INFO("Launching latest version: " + latestVersion);
+    
+    setupFFlags(latestVersion, progressCb);
+    setupDxvk(latestVersion, progressCb);
+    return launchVersion(latestVersion, extraArgs, progressCb);
+}
+
+std::string Launcher::findStudioExecutable(const std::string& versionDir) {
+    std::filesystem::path dir(versionsDir_);
+    dir /= versionDir;
+    
+    if (std::filesystem::exists(dir / "RobloxStudioBeta.exe")) return (dir / "RobloxStudioBeta.exe").string();
+    if (std::filesystem::exists(dir / "RobloxStudio.exe")) return (dir / "RobloxStudio.exe").string();
+    
     return "";
+}
+
+bool Launcher::setupFFlags(const std::string& versionGUID, ProgressCb progressCb) {
+    LOG_INFO("Setting up FFlags for " + versionGUID);
+    std::filesystem::path settingsDir = std::filesystem::path(versionsDir_) / versionGUID / "ClientSettings";
+    std::filesystem::create_directories(settingsDir);
+    
+    std::filesystem::path jsonPath = settingsDir / "ClientAppSettings.json";
+    
+    nlohmann::json fflags = Config::instance().getFFlags();
+    
+    std::ofstream file(jsonPath);
+    if (file.is_open()) {
+        file << fflags.dump(4);
+        return true;
+    }
+    return false;
+}
+
+bool Launcher::launchVersion(const std::string& versionGUID, const std::vector<std::string>& extraArgs, ProgressCb progressCb) {
+    std::string exe = findStudioExecutable(versionGUID);
+    if (exe.empty()) {
+        LOG_ERROR("Could not find Roblox Studio executable in " + versionGUID);
+        return false;
+    }
+    
+    LOG_INFO("Launching version " + versionGUID);
+    return runWine(exe, extraArgs);
 }
 
 // Executes a command using wine with the configured environment
 bool Launcher::runWine(const std::string& executablePath, const std::vector<std::string>& args) {
-    setenv("WINEPREFIX", prefixDir_.c_str(), 1);
+    auto& genCfg = Config::instance().getGeneral();
     
-    bool useDxvk = Config::instance().getGeneral().dxvk;
-    std::string dllOverrides = "dxdiagn,winemenubuilder.exe,mscoree,mshtml=;msedgewebview2=n,b"; 
-    
-    if (useDxvk) {
-        dllOverrides = "dxgi,d3d11=n,b;" + dllOverrides;
-    }
+    if (genCfg.wineRoot.empty() && (genCfg.wineSource == WineSource::VINEGAR || genCfg.wineSource == WineSource::PROTON_GE)) {
+        std::string folderPattern = (genCfg.wineSource == WineSource::VINEGAR) ? "wine-" : "GE-Proton";
+        std::string version = (genCfg.wineSource == WineSource::VINEGAR) ? genCfg.vinegarVersion : genCfg.protonVersion;
+        std::filesystem::path wineDir = std::filesystem::path(rootDir_) / "wine";
+        if (std::filesystem::exists(wineDir)) {
+            for (const auto& entry : std::filesystem::directory_iterator(wineDir)) {
+                std::string fname = entry.path().filename().string();
+                if (entry.is_directory() && fname.find(folderPattern) != std::string::npos) {
+                    if (version != "Latest" && fname.find(version) == std::string::npos) continue;
+                    
+                    std::filesystem::path binCheck = entry.path() / "bin/wine";
+                    if (!std::filesystem::exists(binCheck)) binCheck = entry.path() / "files/bin/wine";
 
-    setenv("WINEDLLOVERRIDES", dllOverrides.c_str(), 1);
-    
-    setenv("WINEESYNC", "1", 1);
-    setenv("MESA_GL_VERSION_OVERRIDE", "4.4", 1);
-    setenv("__GL_THREADED_OPTIMIZATIONS", "1", 1);
-    
-    setenv("VK_LOADER_LAYERS_ENABLE", "VK_LAYER_RSJFW_RsjfwLayer", 1);
-    
-    std::string username = getenv("USER") ? getenv("USER") : "nunya";
-    std::string webviewPath = "";
-    
-    // Dynamically find installed WebView2 version by looking for the executable
-    std::filesystem::path edgeAppDir = std::filesystem::path(prefixDir_) / "drive_c" / "Program Files (x86)" / "Microsoft" / "EdgeWebView" / "Application";
-    
-    if (std::filesystem::exists(edgeAppDir)) {
-        // Recursive search for msedgewebview2.exe
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(edgeAppDir)) {
-            if (entry.is_regular_file() && entry.path().filename() == "msedgewebview2.exe") {
-                 // Found it! Use the parent directory.
-                 webviewPath = entry.path().parent_path().string();
-                 LOG_INFO("Found WebView2 Runtime: " + webviewPath);
-                 break;
+                    if (std::filesystem::exists(binCheck)) {
+                        genCfg.wineRoot = entry.path().string();
+                        Config::instance().save();
+                        std::cout << "[RSJFW] Discovered wineRoot: " << genCfg.wineRoot << "\n";
+                        break;
+                    }
+                }
             }
         }
     }
+
+    rsjfw::wine::Prefix pfx(genCfg.wineRoot, prefixDir_);
     
-    if (webviewPath.empty()) {
-        std::cerr << "[RSJFW] ERROR: Could not find msedgewebview2.exe in prefix. WebView2 may fail.\n";
+    bool wineValid = false;
+    if (!genCfg.wineRoot.empty()) {
+        if (std::filesystem::exists(pfx.bin("wine")) || 
+            (genCfg.wineSource == WineSource::PROTON_GE && std::filesystem::exists(std::filesystem::path(genCfg.wineRoot) / "files/bin/wine"))) {
+            wineValid = true;
+        }
+    }
+
+    if (!wineValid && (genCfg.wineSource == WineSource::VINEGAR || genCfg.wineSource == WineSource::PROTON_GE)) {
+        LOG_INFO("Wine root invalid or missing. Attempting repair...");
+        
+        rsjfw::Downloader downloader(rootDir_);
+        std::string version = (genCfg.wineSource == WineSource::VINEGAR) ? genCfg.vinegarVersion : genCfg.protonVersion;
+        
+        bool success = downloader.installWine(genCfg.wineSource, version, [](const std::string&, float, size_t, size_t){});
+        if (success) {
+            // Reload config
+            genCfg.wineRoot = Config::instance().getGeneral().wineRoot;
+            // Update prefix object with new root
+            pfx = rsjfw::wine::Prefix(genCfg.wineRoot, prefixDir_);
+            wineValid = true;
+            LOG_INFO("Wine repaired successfully.");
+        } else {
+            LOG_ERROR("Failed to repair Wine installation.");
+            return false;
+        }
+    }
+    
+    if (genCfg.wineSource != WineSource::PROTON_GE) {
+        std::filesystem::path wineBinPath = pfx.bin("wine");
+        if (std::filesystem::exists(wineBinPath)) {
+            std::string binDir = wineBinPath.parent_path().string();
+            std::string currentPath = getenv("PATH") ? getenv("PATH") : "";
+            pfx.appendEnv("PATH", binDir + ":" + currentPath);
+        }
+    }
+
+    pfx.appendEnv("WINEESYNC", "1");
+    pfx.appendEnv("__GL_THREADED_OPTIMIZATIONS", "1");
+    pfx.appendEnv("SDL_VIDEODRIVER", "x11");
+    pfx.appendEnv("VK_LOADER_LAYERS_ENABLE", "VK_LAYER_RSJFW_RsjfwLayer");
+    
+    if (genCfg.selectedGpu >= 0) {
+        pfx.appendEnv("DRI_PRIME", std::to_string(genCfg.selectedGpu));
+    }
+    
+    for (const auto& [key, val] : genCfg.customEnv) {
+        if (!key.empty()) pfx.appendEnv(key, val);
+    }
+
+    if (getenv("DBUS_SESSION_BUS_ADDRESS")) {
+        pfx.appendEnv("DBUS_SESSION_BUS_ADDRESS", getenv("DBUS_SESSION_BUS_ADDRESS"));
+    }
+    if (genCfg.wineSource == WineSource::PROTON_GE) {
+        pfx.appendEnv("STEAM_COMPAT_DATA_PATH", prefixDir_);
+        pfx.appendEnv("STEAM_COMPAT_CLIENT_INSTALL_PATH", "/usr/lib/steam");
+        
+        // Explicitly set WINESERVER to avoid version mismatches with system wine
+        // Proton GE stores its wineserver in files/bin/wineserver
+        std::filesystem::path serverPath = std::filesystem::path(genCfg.wineRoot) / "files" / "bin" / "wineserver";
+        if (std::filesystem::exists(serverPath)) {
+            pfx.appendEnv("WINESERVER", serverPath.string());
+        }
+    }
+
+    // -all: disable everything
+    // err+all: show errors
+    // +debugstr: show OutputDebugString
+    
+    std::string winedebug = "";
+    if (debug_) {
+        winedebug = "warn+all,err+all,fixme+all,+debugstr";
     } else {
-        setenv("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER", webviewPath.c_str(), 1);
+        winedebug = "-all";
+    }
+    pfx.appendEnv("WINEDEBUG", winedebug);
+
+    std::string dllOverrides = "dxdiagn=;winemenubuilder.exe=;mscoree=;mshtml="; 
+    bool useDxvk = Config::instance().getGeneral().dxvk;
+    if (useDxvk) {
+        dllOverrides = "dxgi,d3d11,d3d10core,d3d9=n,b;" + dllOverrides;
     }
     
-    std::string webviewUserData = "C:\\users\\" + username + "\\AppData\\Local\\Roblox\\WebView2";
-    setenv("WEBVIEW2_USER_DATA_FOLDER", webviewUserData.c_str(), 1);
-    
-    // Additional Chromium flags
-    setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--no-sandbox --disable-features=WebRtcHideLocalIpsWithMdns --disable-gpu-sandbox --user-agent=\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edge/120.0.0.0\"", 1);
+    pfx.appendEnv("WINEDLLOVERRIDES", dllOverrides);
 
-    std::system(("WINEPREFIX=" + prefixDir_ + " wine reg add \"HKCU\\Software\\Wine\\WineDbg\" /v ShowCrashDialog /t REG_DWORD /d 0 /f > /dev/null 2>&1").c_str());
-    std::system(("WINEPREFIX=" + prefixDir_ + " wine reg add \"HKCU\\Software\\Wine\\X11 Driver\" /v UseEGL /t REG_SZ /d \"Y\" /f > /dev/null 2>&1").c_str());
-    
-    std::system(("WINEPREFIX=" + prefixDir_ + " wine reg add \"HKCU\\Software\\Wine\\Credential Manager\" /f > /dev/null 2>&1").c_str());
-    
-    setenv("WINEDEBUG", "fixme-all,err-kerberos,err-ntlm,err-combase,+debugstr", 1); 
-    
-    std::cout << "[RSJFW] [ENV] WEBVIEW2_BROWSER_EXECUTABLE_FOLDER=" << (getenv("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER") ? getenv("WEBVIEW2_BROWSER_EXECUTABLE_FOLDER") : "NULL") << "\n";
-    std::cout << "[RSJFW] [ENV] WINEPREFIX=" << prefixDir_ << "\n";
-    std::cout << "[RSJFW] Running: wine \"" << executablePath << "\"\n";
-    
-    int pipefd[2];
-    if (pipe(pipefd) == -1) {
-        perror("pipe");
-        return false;
+    bool isProtocol = false;
+    for (const auto& arg : args) {
+        if (arg.find("roblox-studio:") != std::string::npos || arg.find("roblox-studio-auth:") != std::string::npos) {
+            isProtocol = true;
+        }
     }
 
-    pid_t pid = fork();
-    if (pid == -1) {
-        perror("fork");
-        return false;
+    if (!isProtocol) {
+        pfx.kill(); // wineserver -k
     }
 
-    if (pid == 0) { 
-        close(pipefd[0]);
-        dup2(pipefd[1], STDOUT_FILENO);
-        dup2(pipefd[1], STDERR_FILENO);
-        close(pipefd[1]);
+    auto& wineCfg = Config::instance().getWine();
+    std::string resolution = wineCfg.desktopResolution;
+    std::vector<std::string> finalArgs;
 
-        auto& cfg = Config::instance().getWine();
-        std::string resolution = cfg.desktopResolution;
-        
-        std::string desktopArg;
-        if (cfg.multipleDesktops) {
-            desktopArg = "/desktop=RSJFW_" + std::to_string(getpid()) + "," + resolution;
-        } else if (cfg.desktopMode) {
-             desktopArg = "/desktop=RSJFW_Desktop," + resolution;
-        }
-
-        std::vector<std::string> finalArgs;
-        finalArgs.push_back("wine");
-        
-        if (!desktopArg.empty()) {
-            finalArgs.push_back("explorer");
-            finalArgs.push_back(desktopArg);
-        }
-        
-        finalArgs.push_back(executablePath);
-        for (const auto& arg : args) {
-            finalArgs.push_back(arg);
-        }
-        
-        std::vector<char*> cArgs;
-        for (const auto& s : finalArgs) {
-             cArgs.push_back(const_cast<char*>(s.c_str()));
-        }
-        cArgs.push_back(nullptr);
-        
-        std::filesystem::path exeDir = std::filesystem::path(executablePath).parent_path();
-        if (chdir(exeDir.c_str()) != 0) {
-            perror("chdir");
-        }
-
-        execvp("wine", cArgs.data());
-        perror("execvp");
-        _exit(1);
+    if (wineCfg.multipleDesktops || wineCfg.desktopMode) {
+        finalArgs.push_back("explorer");
+        std::string d = "/desktop=RSJFW_" + (wineCfg.multipleDesktops ? std::to_string(getpid()) : "Desktop") + "," + resolution;
+        finalArgs.push_back(d);
     }
+    
+    finalArgs.push_back(executablePath);
+    for (const auto& a : args) finalArgs.push_back(a);
 
-    close(pipefd[1]);
-    FILE* stream = fdopen(pipefd[0], "r");
-    char buffer[1024];
+    std::cout << "[RSJFW] Launching: " << executablePath << "\n";
 
     std::string logDir = std::string(getenv("HOME")) + "/.local/share/rsjfw/logs";
     std::filesystem::create_directories(logDir);
-    std::string logPath = logDir + "/studio_" + std::to_string(pid) + ".log";
-    std::ofstream logFile(logPath);
-
-    while (fgets(buffer, sizeof(buffer), stream) != nullptr) {
-        std::string line(buffer);
-        std::cout << line << std::flush;
-        if (logFile.is_open()) {
-            logFile << line << std::flush;
-        }
-
-        if (line.find("Fatal exiting due to Trouble launching Studio") != std::string::npos) {
-            std::cerr << "\n[RSJFW] Detected fatal Roblox error. Killing Studio (PID: " << pid << ")...\n";
-            if (logFile.is_open()) logFile << "\n[RSJFW] Detected fatal Roblox error. Killing Studio...\n";
-            kill(pid, SIGTERM);
-            sleep(1);
-            kill(pid, SIGKILL);
-            break;
-        }
-    }
+    std::string logPath = logDir + "/studio_latest.log";
     
-    if (logFile.is_open()) logFile.close();
+    std::shared_ptr<std::ofstream> logFile = std::make_shared<std::ofstream>(logPath);
+    
+    std::string studioCwd = std::filesystem::path(executablePath).parent_path().string();
 
-    fclose(stream);
-    int status;
-    waitpid(pid, &status, 0);
-    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    std::string target = (wineCfg.multipleDesktops || wineCfg.desktopMode) ? "explorer" : executablePath;
+    
+    std::vector<std::string> launchArgs;
+    if (wineCfg.multipleDesktops || wineCfg.desktopMode) {
+        if (!finalArgs.empty() && finalArgs[0] == "explorer") {
+            launchArgs.assign(finalArgs.begin() + 1, finalArgs.end());
+        } else {
+            launchArgs = finalArgs;
+        }
+    } else {
+        launchArgs = args;
+    }
+
+    return pfx.wine(target, launchArgs, [logFile](const std::string& line) {
+        std::cout << line;
+        
+        // Write to version-specific log
+        if (logFile && logFile->is_open()) *logFile << line;
+        
+        // Also pipe to main rsjfw.log
+        std::string rawLine = line;
+        if (!rawLine.empty() && rawLine.back() == '\n') rawLine.pop_back();
+        if (!rawLine.empty()) {
+            LOG_INFO("[WINE] " + rawLine);
+        }
+        
+        if (line.find("Fatal exiting due to Trouble launching Studio") != std::string::npos) {
+            std::cerr << "\n[RSJFW] Fatal error detected. Aborting.\n";
+        }
+    }, studioCwd);
 }
 
 } // namespace rsjfw
