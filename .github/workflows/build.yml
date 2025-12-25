@@ -162,6 +162,7 @@ jobs:
       with:
         pkgname: rsjfw
         pkgbuild: ./aur_deploy/PKGBUILD
+        assets: ./aur_deploy/rsjfw.install
         commit_username: ${{ secrets.AUR_USERNAME }}
         commit_email: ${{ secrets.AUR_EMAIL }}
         ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
