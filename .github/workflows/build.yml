@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       contents: write
+    outputs:
+      appimage_name: ${{ steps.bundle.outputs.appimage_name }}
 
     steps:
     - uses: actions/checkout@v4
@@ -49,8 +51,9 @@ jobs:
         chmod +x linuxdeploy-x86_64.AppImage
 
     - name: Create AppImage
+      id: bundle
       run: |
-        export VERSION="${GITHUB_REF_NAME:-1.0.${{ github.run_number }}}"
+        VERSION="${GITHUB_REF_NAME:-1.0.${{ github.run_number }}}"
         
         # Ensure desktop file and icon are in place
         mkdir -p AppDir/usr/share/applications
@@ -65,27 +68,25 @@ jobs:
           --icon-file=assets/logo.png \
           --output appimage
         
-        mv RSJFW*.AppImage rsjfw-${VERSION}-x86_64.AppImage || mv *.AppImage rsjfw-${VERSION}-x86_64.AppImage
+        APPIMAGE_NAME="rsjfw-${VERSION}-x86_64.AppImage"
+        mv RSJFW*.AppImage "$APPIMAGE_NAME" || mv *.AppImage "$APPIMAGE_NAME"
+        echo "appimage_name=$APPIMAGE_NAME" >> $GITHUB_OUTPUT
 
-    - name: Upload Artifact
+    - name: Upload AppImage Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: rsjfw-appimage
-        path: rsjfw-*.AppImage
-
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
-      with:
-        files: rsjfw-*.AppImage
-        fail_on_unmatched_files: true
+        name: appimage
+        path: "*.AppImage"
 
   build-arch:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     container: archlinux:latest
+    outputs:
+      arch_tarball_name: ${{ steps.package.outputs.arch_tarball_name }}
+      sha: ${{ steps.sha.outputs.sha }}
+      pkgver: ${{ steps.package.outputs.pkgver }}
 
     steps:
     - name: Install System Dependencies
@@ -115,49 +116,75 @@ jobs:
         DESTDIR=$(pwd)/staging cmake --install build
 
     - name: Create Tarball
+      id: package
       run: |
         VERSION="${GITHUB_REF_NAME}"
-        # If VERSION doesn't start with v, or is empty, fallback to run number
         if [[ ! $VERSION =~ ^v[0-9] ]]; then
           VERSION="v1.0.${{ github.run_number }}"
         fi
         PKGVER="${VERSION#v}"
-        
-        echo "VERSION=$VERSION" >> $GITHUB_ENV
-        echo "PKGVER=$PKGVER" >> $GITHUB_ENV
+        TARBALL_NAME="rsjfw-${PKGVER}-arch-x86_64.tar.gz"
         
         cd staging
-        tar -czvf ../rsjfw-${PKGVER}-arch-x86_64.tar.gz usr
+        tar -czvf "../$TARBALL_NAME" usr
         cd ..
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: rsjfw-arch-tarball
-        path: rsjfw-*-arch-*.tar.gz
+        
+        echo "arch_tarball_name=$TARBALL_NAME" >> $GITHUB_OUTPUT
+        echo "pkgver=$PKGVER" >> $GITHUB_OUTPUT
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
 
     - name: Calculate SHA256
       id: sha
       run: |
-        SHA=$(sha256sum rsjfw-${{ env.PKGVER }}-arch-x86_64.tar.gz | awk '{print $1}')
-        echo "SHA=$SHA" >> $GITHUB_ENV
+        SHA=$(sha256sum rsjfw-*-arch-x86_64.tar.gz | awk '{print $1}')
+        echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+    - name: Upload Arch Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: arch-tarball
+        path: "*.tar.gz"
+
+  release:
+    needs: [build-appimage, build-arch]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Prepare Release Files
+      run: |
+        mkdir -p release_files
+        cp artifacts/appimage/*.AppImage release_files/
+        cp artifacts/arch-tarball/*.tar.gz release_files/
+        ls -R release_files/
 
     - name: Create GitHub Release
-      if: startsWith(github.ref, 'refs/tags/')
       uses: softprops/action-gh-release@v1
       with:
-        files: rsjfw-${{ env.PKGVER }}-arch-x86_64.tar.gz
+        files: release_files/*
+        generate_release_notes: true
         fail_on_unmatched_files: true
 
     - name: Prepare AUR Package
       run: |
         mkdir -p aur_deploy
         cp packaging/aur/PKGBUILD aur_deploy/
-        cp packaging/aur/rsjfw.install aur_deploy/
+        cp rsjfw.install aur_deploy/
         
-        sed -i "s/pkgver=0.0.0/pkgver=${{ env.PKGVER }}/" aur_deploy/PKGBUILD
-        # Replace the first SHA256 SKIP with the actual one
-        sed -i "0,/SKIP/s/SKIP/${{ env.SHA }}/" aur_deploy/PKGBUILD
+        PKGVER="${{ needs.build-arch.outputs.pkgver }}"
+        SHA="${{ needs.build-arch.outputs.sha }}"
+        
+        sed -i "s/pkgver=0.0.0/pkgver=$PKGVER/" aur_deploy/PKGBUILD
+        sed -i "0,/SKIP/s/SKIP/$SHA/" aur_deploy/PKGBUILD
         
         cat aur_deploy/PKGBUILD
         
@@ -170,5 +197,5 @@ jobs:
         commit_username: ${{ secrets.AUR_USERNAME }}
         commit_email: ${{ secrets.AUR_EMAIL }}
         ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-        commit_message: "Update to ${{ env.VERSION }}"
+        commit_message: "Update to ${{ github.ref_name }}"
         ssh_keyscan_types: rsa,ecdsa,ed25519
