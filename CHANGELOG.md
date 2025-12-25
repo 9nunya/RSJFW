@@ -1,6 +1,6 @@
 # Changelog
 
-## [2.0.0] - 2024-12-24
+## [2.0.0] - 2025-12-24
 
 ### 🎄 The Christmas Release - RSJFW Goes Solo
 
