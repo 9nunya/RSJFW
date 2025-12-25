@@ -178,7 +178,7 @@ jobs:
         
         git add PKGBUILD rsjfw.install .SRCINFO
         git commit -m "Update to ${VERSION}" || echo "No changes"
-        git push origin master
+        git push origin HEAD:master --force
 
   release:
     needs: [build-appimage, build-arch]
