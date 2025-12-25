@@ -54,9 +54,9 @@ jobs:
         
         # Ensure desktop file and icon are in place
         mkdir -p AppDir/usr/share/applications
-        mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+        mkdir -p AppDir/usr/share/icons/hicolor/512x512/apps
         cp rsjfw.desktop AppDir/usr/share/applications/
-        cp assets/logo.png AppDir/usr/share/icons/hicolor/256x256/apps/rsjfw.png
+        cp assets/logo.png AppDir/usr/share/icons/hicolor/512x512/apps/rsjfw.png
         
         # Create AppImage
         ./linuxdeploy-x86_64.AppImage \
@@ -149,9 +149,11 @@ jobs:
       run: |
         mkdir -p aur_deploy
         cp packaging/aur/PKGBUILD aur_deploy/
+        cp packaging/aur/rsjfw.install aur_deploy/
         
         sed -i "s/pkgver=0.0.0/pkgver=${{ env.PKGVER }}/" aur_deploy/PKGBUILD
-        sed -i "s/sha256sums=('SKIP')/sha256sums=('${{ env.SHA }}')/" aur_deploy/PKGBUILD
+        # Replace the first SHA256 SKIP with the actual one
+        sed -i "0,/SKIP/s/SKIP/${{ env.SHA }}/" aur_deploy/PKGBUILD
         
         cat aur_deploy/PKGBUILD
         
