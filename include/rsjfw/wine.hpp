@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RSJFW_WINE_HPP
+#define RSJFW_WINE_HPP
 
 #include <string>
 #include <vector>
@@ -28,15 +29,16 @@ public:
     // Sets additional environment variables for this prefix
     void setEnv(const std::map<std::string, std::string>& env);
     void appendEnv(const std::string& key, const std::string& value);
+    std::string getEnv(const std::string& key) const;
 
     // Runs a command within the Wineprefix
     // Returns true on success (exit code 0), false otherwise
     // onOutput: Optional callback for stdout/stderr streaming
     // cwd: Optional working directory for the process
-    bool runCommand(const std::string& exe, const std::vector<std::string>& args, std::function<void(const std::string&)> onOutput = nullptr, const std::string& cwd = "");
+    bool runCommand(const std::string& exe, const std::vector<std::string>& args, std::function<void(const std::string&)> onOutput = nullptr, const std::string& cwd = "", bool wait = true);
 
     // Wrapper to run 'wine' or 'wine64' based on availability
-    bool wine(const std::string& exe, const std::vector<std::string>& args, std::function<void(const std::string&)> onOutput = nullptr, const std::string& cwd = "");
+    bool wine(const std::string& exe, const std::vector<std::string>& args, std::function<void(const std::string&)> onOutput = nullptr, const std::string& cwd = "", bool wait = true);
 
     // Helper to resolve a binary path (accounting for Proton structure)
     std::string bin(const std::string& prog) const;
@@ -44,6 +46,14 @@ public:
     // Helper: Registry operations
     bool registryAdd(const std::string& key, const std::string& valueName, const std::string& value, const std::string& type = "REG_SZ");
     
+    struct RegistryEntry {
+        std::string key;
+        std::string valueName;
+        std::string value;
+        std::string type; // e.g. "REG_SZ", "REG_DWORD", "REG_BINARY"
+    };
+    bool registryApply(const std::vector<RegistryEntry>& entries);
+
     // Kill all processes in this prefix (wineserver -k)
     bool kill();
 
@@ -58,3 +68,5 @@ private:
 
 } // namespace wine
 } // namespace rsjfw
+
+#endif // RSJFW_WINE_HPP

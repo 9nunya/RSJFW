@@ -1,34 +1,26 @@
-#pragma once
-#include <string>
-#include <vector>
+#ifndef RSJFW_SOCKET_HPP
+#define RSJFW_SOCKET_HPP
+
+#include <filesystem>
 #include <functional>
-#include <sys/un.h>
+#include <string>
 
 namespace rsjfw {
 
 class SingleInstance {
 public:
-    explicit SingleInstance(const std::string& name);
-    ~SingleInstance();
+  explicit SingleInstance(const std::filesystem::path &lockPath);
+  ~SingleInstance();
 
-    // Returns true if this is the primary instance (bound to socket).
-    // Returns false if another instance is already running.
-    bool isPrimary();
-
-    // If secondary, sends args to the primary instance.
-    void sendArgs(const std::vector<std::string>& args);
-
-    // If primary, listen for incoming args in a separate thread.
-    void listen(std::function<void(const std::vector<std::string>&)> callback);
-
-    // Stop listening (cleanup)
-    void stop();
+  // Returns true if this is the primary instance (acquired the lock).
+  // Returns false if another instance is already running.
+  bool isPrimary();
 
 private:
-    std::string socketPath_;
-    int serverSocket_ = -1;
-    bool isPrimary_ = false;
-    bool running_ = false;
+  std::string lockPath_;
+  int lockFd_ = -1;
 };
 
 } // namespace rsjfw
+
+#endif // RSJFW_SOCKET_HPP

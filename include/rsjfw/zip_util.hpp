@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RSJFW_ZIP_UTIL_HPP
+#define RSJFW_ZIP_UTIL_HPP
 
 #include <string>
 
@@ -10,3 +11,5 @@ public:
 };
 
 } // namespace rsjfw
+
+#endif // RSJFW_ZIP_UTIL_HPP

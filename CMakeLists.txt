@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(RSJFW VERSION 1.0.0 LANGUAGES CXX)
+project(RSJFW VERSION 2.1.0 LANGUAGES CXX)
 
 # Auto-initialize submodules
 find_package(Git QUIET)
@@ -19,7 +19,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Dependencies
 find_package(CURL REQUIRED)
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(LIBZIP REQUIRED libzip)
+find_package(LibArchive REQUIRED)
 find_package(Vulkan REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
 find_package(OpenGL REQUIRED)
@@ -32,23 +32,27 @@ include_directories(
     ${PROJECT_SOURCE_DIR}/external/imgui/backends
     ${PROJECT_SOURCE_DIR}/external/stb
     ${CURL_INCLUDE_DIRS}
-    ${LIBZIP_INCLUDE_DIRS}
+    ${LibArchive_INCLUDE_DIRS}
     ${OPENGL_INCLUDE_DIR}
 )
 # Bundle nlohmann json
 include_directories(include/nlohmann)
 
 # Sources
-file(GLOB_RECURSE SOURCES "src/*.cpp")
-# Exclude layer sources from main executable
-list(FILTER SOURCES EXCLUDE REGEX "src/layer/.*")
+file(GLOB_RECURSE CORE_SOURCES "src/core/*.cpp")
+file(GLOB_RECURSE ROBLOX_SOURCES "src/roblox/*.cpp")
+file(GLOB_RECURSE GUI_PAGES_SOURCES "src/gui/pages/*.cpp")
 
-# ImGui sources for GLFW/OpenGL3
-set(IMGUI_SOURCES
+set(SOURCES
+    ${CORE_SOURCES}
+    ${ROBLOX_SOURCES}
+    ${GUI_PAGES_SOURCES}
+    src/main.cpp
+)
+
+# ImGui and GUI sources
+set(GUI_SOURCES
     src/gui/gui.cpp
-    src/gui/pages/HomePage.cpp
-    src/gui/pages/SettingsPage.cpp
-    src/gui/pages/TroubleshootingPage.cpp
     external/imgui/imgui.cpp
     external/imgui/imgui_demo.cpp
     external/imgui/imgui_draw.cpp
@@ -59,11 +63,11 @@ set(IMGUI_SOURCES
 )
 
 # Executable
-add_executable(rsjfw ${SOURCES} ${IMGUI_SOURCES})
+add_executable(rsjfw ${SOURCES} ${GUI_SOURCES})
 target_link_libraries(rsjfw PRIVATE 
     glfw
     OpenGL::GL
-    ${LIBZIP_LIBRARIES}
+    LibArchive::LibArchive
     CURL::libcurl
     X11::X11
 )

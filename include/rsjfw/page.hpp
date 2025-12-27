@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RSJFW_PAGE_HPP
+#define RSJFW_PAGE_HPP
 
 #include <string>
 #include <stack>
@@ -43,4 +44,6 @@ private:
     std::stack<std::shared_ptr<Page>> pages_;
 };
 
-}
+} // namespace rsjfw
+
+#endif // RSJFW_PAGE_HPP

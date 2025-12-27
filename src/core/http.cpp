@@ -2,6 +2,7 @@
 #include <stdexcept>
 #include <fstream>
 #include <iostream>
+#include <filesystem>
 
 namespace rsjfw {
 
@@ -56,7 +57,8 @@ bool HTTP::download(const std::string& url, const std::string& filepath, Progres
     CURL* curl = curl_easy_init();
     if (!curl) return false;
 
-    std::ofstream ofs(filepath, std::ios::binary);
+    std::string partPath = filepath + ".part";
+    std::ofstream ofs(partPath, std::ios::binary);
     if (!ofs) {
         curl_easy_cleanup(curl);
         return false;
@@ -77,9 +79,21 @@ bool HTTP::download(const std::string& url, const std::string& filepath, Progres
     }
 
     CURLcode res = curl_easy_perform(curl);
+    ofs.close();
     curl_easy_cleanup(curl);
     
-    return res == CURLE_OK;
+    if (res == CURLE_OK) {
+        try {
+            if (std::filesystem::exists(filepath)) std::filesystem::remove(filepath);
+            std::filesystem::rename(partPath, filepath);
+            return true;
+        } catch (...) {
+            return false;
+        }
+    } else {
+        std::filesystem::remove(partPath);
+        return false;
+    }
 }
 
 } // namespace rsjfw

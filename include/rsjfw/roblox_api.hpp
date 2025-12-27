@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RSJFW_ROBLOX_API_HPP
+#define RSJFW_ROBLOX_API_HPP
 
 #include <string>
 #include <vector>
@@ -21,3 +22,5 @@ public:
 };
 
 } // namespace rsjfw
+
+#endif // RSJFW_ROBLOX_API_HPP

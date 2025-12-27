@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RSJFW_HOMEPAGE_HPP
+#define RSJFW_HOMEPAGE_HPP
 
 #include "rsjfw/page.hpp"
 #include "imgui.h"
@@ -23,4 +24,6 @@ private:
     int logoHeight_;
 };
 
-}
+} // namespace rsjfw
+
+#endif // RSJFW_HOMEPAGE_HPP

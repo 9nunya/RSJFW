@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RSJFW_HTTP_HPP
+#define RSJFW_HTTP_HPP
 
 #include <string>
 #include <curl/curl.h>
@@ -19,3 +20,5 @@ private:
 };
 
 } // namespace rsjfw
+
+#endif // RSJFW_HTTP_HPP

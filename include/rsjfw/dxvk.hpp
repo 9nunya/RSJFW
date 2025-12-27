@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RSJFW_DXVK_HPP
+#define RSJFW_DXVK_HPP
 
 #include "rsjfw/wine.hpp"
 #include <string>
@@ -14,3 +15,5 @@ void envOverride(wine::Prefix& pfx, bool enabled);
 
 } // namespace dxvk
 } // namespace rsjfw
+
+#endif // RSJFW_DXVK_HPP

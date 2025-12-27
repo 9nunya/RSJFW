@@ -1,4 +1,5 @@
-#pragma once
+#ifndef RSJFW_LOGGER_HPP
+#define RSJFW_LOGGER_HPP
 
 #include <string>
 #include <fstream>
@@ -47,3 +48,5 @@ private:
 #define LOG_ERROR(msg) rsjfw::Logger::instance().log(rsjfw::LogLevel::ERROR, msg)
 
 } // namespace rsjfw
+
+#endif // RSJFW_LOGGER_HPP
